@@ -16,13 +16,15 @@ algo falla en cualquier punto, se deshace todo automáticamente y la
 base de datos queda exactamente como estaba antes de intentarlo.
 """
 
+import os
 import subprocess
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
+from sqlalchemy.orm import Session
 
-from database.database import DATABASE_URL
+from database.database import DATABASE_URL, get_db
 from app.api.deps import get_admin_actual, get_usuario_actual
 from app.core.config import settings
 from app.core.security import verificar_password
@@ -40,11 +42,13 @@ def _url_para_pg_dump(url: str) -> str:
 @router.get("/descargar", dependencies=[Depends(get_admin_actual)])
 def descargar_backup():
     url = _url_para_pg_dump(DATABASE_URL)
+    entorno = os.environ.copy()
+    entorno["PGCLIENTENCODING"] = "UTF8"
 
     try:
         resultado = subprocess.run(
             [settings.PG_DUMP_PATH, url, "--no-owner", "--no-privileges", "--clean", "--if-exists"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, env=entorno,
         )
     except FileNotFoundError:
         raise HTTPException(
@@ -106,6 +110,7 @@ async def restaurar_backup(
     password: str = Form(...),
     archivo: UploadFile = File(...),
     usuario_actual=Depends(get_admin_actual),
+    db: Session = Depends(get_db),
 ):
     # 1) Re-confirmar la contraseña del admin, aunque ya esté logueado.
     #    Usa 400, no 401: un 401 dispara el interceptor global del
@@ -127,6 +132,15 @@ async def restaurar_backup(
             status_code=400,
             detail="El archivo no parece un respaldo válido de este sistema. No se modificó nada.",
         )
+
+    # 2.5) Esta misma petición (por la validación de arriba, get_admin_actual,
+    #    etc.) también tiene su propia conexión abierta hacia la base de
+    #    datos. Si no la cerramos ANTES de restaurar, el siguiente paso
+    #    (que cierra "todas las demás conexiones" para poder restaurar
+    #    sin bloqueos) también mataría esta conexión sin querer, y el
+    #    sistema tronaría al final tratando de cerrar una conexión ya
+    #    muerta — aunque la restauración en sí haya salido bien.
+    db.close()
 
     # 3) Respaldo de seguridad del estado ACTUAL, antes de tocar nada,
     #    por si el archivo subido resulta no ser el que querías.

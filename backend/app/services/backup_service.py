@@ -21,7 +21,7 @@ import subprocess
 import tempfile
 from datetime import date, datetime, timedelta
 
-from database.database import DATABASE_URL
+from database.database import DATABASE_URL, engine
 from app.core.config import settings
 
 _NOMBRE_ARCHIVO_ESTADO = "estado.json"
@@ -118,10 +118,12 @@ def _generar_backup_diario_interno() -> dict:
     ya_existia = os.path.exists(ruta)
 
     url = _url_para_pg_dump(DATABASE_URL)
+    entorno = os.environ.copy()
+    entorno["PGCLIENTENCODING"] = "UTF8"
     try:
         resultado = subprocess.run(
             [settings.PG_DUMP_PATH, url, "--no-owner", "--no-privileges", "--clean", "--if-exists"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, env=entorno,
         )
     except FileNotFoundError:
         return {
@@ -187,6 +189,29 @@ def parece_backup_valido(texto: str) -> bool:
     return parece_dump_postgres and tiene_tablas_del_sistema
 
 
+def _cerrar_otras_conexiones() -> None:
+    """El propio backend mantiene sus propias conexiones abiertas hacia
+    esta misma base de datos todo el tiempo que está corriendo (normal,
+    es lo que lo hace rápido). El problema: psql necesita borrar y
+    recrear las tablas para restaurar, y PostgreSQL no lo deja avanzar
+    mientras esas conexiones sigan "agarrando" esas tablas — se queda
+    esperando indefinidamente en vez de fallar rápido.
+
+    Esto le pide a PostgreSQL que cierre cualquier otra conexión a esta
+    base de datos (incluidas las del propio backend) antes de restaurar.
+    Es seguro: el propio SQLAlchemy vuelve a abrir conexiones nuevas
+    automáticamente la próxima vez que las necesite, y como esto corre
+    con el usuario de PostgreSQL configurado en DATABASE_URL, no hace
+    falta ningún permiso extra."""
+    engine.dispose()  # suelta primero las conexiones que el propio backend trae en su bolsa
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conexion:
+        conexion.exec_driver_sql(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = current_database() AND pid <> pg_backend_pid();"
+        )
+    engine.dispose()  # y se suelta también la que se acaba de usar para pedir esto
+
+
 def restaurar_desde_sql(sql_texto: str) -> dict:
     """Aplica un archivo .sql completo dentro de UNA sola transacción
     (--single-transaction): o se aplica entero, o si algo falla en
@@ -197,17 +222,43 @@ def restaurar_desde_sql(sql_texto: str) -> dict:
     --set ON_ERROR_STOP=1 hace que se detenga apenas encuentra el
     primer error, en vez de seguir mandando el resto de instrucciones
     de un archivo que ya sabemos que se va a deshacer."""
+    try:
+        _cerrar_otras_conexiones()
+    except Exception as e:
+        return {"ok": False, "motivo": f"No se pudieron cerrar las conexiones activas antes de restaurar: {e}"}
+
     url = _url_para_pg_dump(DATABASE_URL)
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False, encoding="utf-8") as tmp:
+    # newline="" es clave: el archivo subido ya trae sus propios saltos
+    # de línea (típicamente \r\n, de Windows). Sin esto, Python "traduce"
+    # los saltos de línea al volver a escribirlos y termina duplicando
+    # una parte (\r\n se convierte en \r\r\n) — eso desordena las líneas
+    # de los bloques COPY del backup y es lo que hacía que psql se
+    # confundiera creyendo que había un salto de línea donde no debía.
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False, encoding="utf-8", newline="") as tmp:
         tmp.write(sql_texto)
         ruta_temporal = tmp.name
+
+    # psql en Windows no siempre asume que el archivo está en UTF-8 (a
+    # veces usa la configuración regional de Windows en su lugar), y
+    # como el archivo que generamos SÍ está en UTF-8, hay que decírselo
+    # explícitamente — si no, cualquier acento o carácter especial en
+    # los datos (nombres de socios, notas, etc.) se lee mal y puede
+    # tronar la restauración con errores confusos.
+    entorno = os.environ.copy()
+    entorno["PGCLIENTENCODING"] = "UTF8"
 
     try:
         resultado = subprocess.run(
             [settings.PSQL_PATH, url, "--single-transaction", "--set", "ON_ERROR_STOP=1", "-f", ruta_temporal],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, env=entorno,
         )
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "motivo": "La restauración tardó más de 1 minuto y se canceló por seguridad. "
+                      "No se modificó nada. Puede que otra conexión siga bloqueando las tablas.",
+        }
     except FileNotFoundError:
         return {
             "ok": False,
