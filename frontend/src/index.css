@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Modo claro (por defecto) */
+:root {
+  --c-bg: 244 251 247;
+  --c-panel: 255 255 255;
+  --c-ink: 0 63 125;
+  --c-inksoft: 74 110 147;
+  --c-line: 215 230 240;
+  --c-accent: 255 214 0;
+  --c-accentink: 0 63 125;
+  --c-gold: 212 175 55;
+  --c-good: 14 154 99;
+  --c-goodbg: 223 251 236;
+  --c-warn: 255 127 80;
+  --c-warnbg: 255 233 224;
+  --c-bad: 214 69 69;
+  --c-badbg: 251 225 222;
+}
+
+/* Modo oscuro: se activa poniendo la clase "dark" en <html> */
+.dark {
+  --c-bg: 10 16 28;
+  --c-panel: 19 27 45;
+  --c-ink: 232 241 251;
+  --c-inksoft: 148 172 201;
+  --c-line: 38 52 76;
+  --c-accent: 255 214 0;
+  --c-accentink: 10 16 28;
+  --c-gold: 224 196 100;
+  --c-good: 45 199 140;
+  --c-goodbg: 15 51 38;
+  --c-warn: 255 148 108;
+  --c-warnbg: 64 41 27;
+  --c-bad: 240 106 106;
+  --c-badbg: 59 27 27;
+}
+
+body {
+  transition: background-color 0.2s ease;
+}
+
+/* Todos los campos de formulario (input, select, textarea) del sistema
+   usan estas reglas por defecto, para que se vean bien tanto en modo
+   claro como oscuro sin tener que ajustar cada pantalla por separado. */
+input, select, textarea {
+  background-color: rgb(var(--c-panel));
+  color: rgb(var(--c-ink));
+}
+input::placeholder, textarea::placeholder {
+  color: rgb(var(--c-inksoft));
+  opacity: 1;
+}
+select option {
+  background-color: rgb(var(--c-panel));
+  color: rgb(var(--c-ink));
+}
+/* El ícono del selector de fecha nativo es oscuro por defecto; en modo
+   oscuro hay que invertirlo para que se vea sobre el fondo oscuro. */
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}

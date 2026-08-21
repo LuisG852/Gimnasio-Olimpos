@@ -1,0 +1,26 @@
+# === Entornos y dependencias (se regeneran solas, no se suben) ===
+backend/venv/
+frontend/node_modules/
+database/venv/
+
+# === Secretos — NUNCA subir esto ===
+backend/.env
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+
+# === Respaldos de la base de datos (son datos reales de socios/pagos,
+# no pertenecen a un repositorio de código) ===
+backend/backups/
+
+# === Archivos que genera el propio sistema al correr ===
+frontend/dist/
+
+# === Basura típica de editores y de Windows ===
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.log

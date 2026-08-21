@@ -1,0 +1,10 @@
+fastapi==0.115.0
+uvicorn[standard]==0.31.0
+pydantic[email]==2.9.2
+python-dotenv==1.0.1
+requests==2.32.3
+APScheduler==3.10.4
+python-multipart==0.0.12
+
+# La capa de base de datos se instala aparte (ver database/requirements.txt)
+-r ../database/requirements.txt
