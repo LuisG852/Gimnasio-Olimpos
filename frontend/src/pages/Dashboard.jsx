@@ -7,7 +7,8 @@ import { estadoSocio, formatFecha, diasHasta, aplicarPlantilla, abrirWhatsapp, o
 import StatCard from "../components/StatCard";
 import Badge from "../components/Badge";
 
-const COLORES = { Mensual: "#6EE7B7", Trimestral: "#0E9A63", Semestral: "#D4AF37", Anual: "#D64545" };
+const COLORES = { Mensual: "#6EE7B7", Trimestral: "#0E9A63", Semestral: "#D4AF37", Anual: "#D64545", Personalizado: "#8B5CF6" };
+const TIPOS_PRINCIPALES = ["Mensual", "Trimestral", "Semestral", "Anual"];
 
 function diasHastaCumple(fechaNacStr) {
   if (!fechaNacStr) return null;
@@ -50,10 +51,20 @@ export default function Dashboard() {
 
   if (!stats) return <p className="text-inksoft">Cargando...</p>;
 
-  const dataPorTipo = ["Mensual", "Trimestral", "Semestral", "Anual"].map((tipo) => ({
+  const dataPorTipo = TIPOS_PRINCIPALES.map((tipo) => ({
     tipo,
     cantidad: stats.por_tipo[tipo] || 0,
   }));
+  // Los planes con nombre propio (ej. "Plan Familiar") no encajan en
+  // ninguno de los 4 estándar — antes simplemente no aparecían en esta
+  // gráfica, como si esos socios no existieran. Se agrupan todos bajo
+  // una sola columna "Personalizado" para que sí queden a la vista.
+  const totalPersonalizados = Object.entries(stats.por_tipo)
+    .filter(([tipo]) => !TIPOS_PRINCIPALES.includes(tipo))
+    .reduce((suma, [, cantidad]) => suma + cantidad, 0);
+  if (totalPersonalizados > 0) {
+    dataPorTipo.push({ tipo: "Personalizado", cantidad: totalPersonalizados });
+  }
 
   const dataIngresos = ingresosMensuales.map((i) => ({ mes: nombreMes(i.mes), total: i.total }));
 

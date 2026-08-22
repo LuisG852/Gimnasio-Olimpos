@@ -37,7 +37,7 @@ export default function Ejercicios() {
     });
   };
 
-  useEffect(() => { cargar(); }, [musculoElegido, filtroActivo]);
+  useEffect(() => { cargar(); }, [musculoElegido, filtroActivo, busqueda]);
 
   const buscar = (e) => {
     e.preventDefault();

@@ -3,6 +3,12 @@ Junta en una sola línea de tiempo lo que ya se guarda repartido en
 varias tablas (quién registró cada pago, gasto, venta, compra y
 movimiento de caja) — no es una tabla nueva, es una lectura combinada
 de lo que el sistema ya guardaba pero que no se mostraba en ningún lado.
+
+Los pagos de socios (inscripción, cuota de inscripción, renovación) se
+muestran solo desde Caja ("Ingreso en Caja") y NO desde Comprobantes —
+cada pago genera un registro en ambas tablas a la vez, así que
+mostrar las dos por separado hacía que el mismo pago apareciera dos
+veces en la lista, con el mismo monto y la misma fecha.
 """
 
 from datetime import date, datetime, timedelta
@@ -10,7 +16,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from database.models import MovimientoCaja, Gasto, VentaProducto, CompraProducto, Comprobante, Producto, Usuario
+from database.models import MovimientoCaja, Gasto, VentaProducto, CompraProducto, Producto, Usuario
 
 
 def _nombre_usuario(db: Session, usuario_id: Optional[int], cache: dict) -> str:
@@ -28,6 +34,9 @@ def obtener_actividad(db: Session, dias: int = 30, usuario_id: Optional[int] = N
     eventos = []
 
     # --- Movimientos de caja: ingresos y gastos del día a día ---
+    # Ya incluye los pagos de socios (inscripción, cuota de inscripción,
+    # renovación) en su descripción — por eso no se agrega también desde
+    # Comprobantes, para no mostrar el mismo pago dos veces.
     movimientos = db.query(MovimientoCaja).filter(MovimientoCaja.fecha >= desde)
     if usuario_id:
         movimientos = movimientos.filter(MovimientoCaja.usuario_id == usuario_id)
@@ -38,18 +47,6 @@ def obtener_actividad(db: Session, dias: int = 30, usuario_id: Optional[int] = N
             "usuario": _nombre_usuario(db, m.usuario_id, cache_usuarios),
             "tipo": etiqueta,
             "detalle": f"{m.descripcion} — Q{m.monto}",
-        })
-
-    # --- Pagos de socios (comprobantes) ---
-    comprobantes = db.query(Comprobante).filter(Comprobante.fecha >= desde)
-    if usuario_id:
-        comprobantes = comprobantes.filter(Comprobante.usuario_id == usuario_id)
-    for c in comprobantes.all():
-        eventos.append({
-            "fecha": c.fecha.isoformat(), "hora": None,
-            "usuario": _nombre_usuario(db, c.usuario_id, cache_usuarios),
-            "tipo": "Pago de socio",
-            "detalle": f"{c.nombre} {c.apellido} — {c.tipo_membresia} — Q{c.precio}",
         })
 
     # --- Gastos de Contabilidad (fijos/variables) ---
