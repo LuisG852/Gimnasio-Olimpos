@@ -1,7 +1,7 @@
 import React from "react";
 import { useEffect, useState, useMemo } from "react";
 import { Plus, Pencil, Trash2, MessageCircle, CalendarClock, Search, RefreshCw, Ruler, Receipt, BellOff, History, Download } from "lucide-react";
-import { socioService, cajaService } from "../services/api";
+import { socioService, cajaService, configuracionService } from "../services/api";
 import { estadoSocio, diasHasta, aplicarPlantilla, abrirWhatsapp, obtenerPlantillas, prepararVentanaWhatsapp } from "../utils/whatsapp";
 import { generarNuevoComprobante, reimprimirOGenerarComprobante } from "../utils/comprobante";
 import { exportarSociosExcel } from "../utils/exportarSocios";
@@ -45,10 +45,14 @@ export default function Socios() {
   const [verHistorial, setVerHistorial] = useState(null);
   const [eliminando, setEliminando] = useState(null);
   const [aviso, setAviso] = useState(null);
+  const [cuotaInscripcion, setCuotaInscripcion] = useState(0);
 
   const cargar = () => socioService.listar().then((res) => setSocios(res.data));
 
   useEffect(() => { cargar(); }, []);
+  useEffect(() => {
+    configuracionService.obtenerCuotaInscripcion().then(({ data }) => setCuotaInscripcion(data.cuota_inscripcion));
+  }, []);
 
   const guardar = async (datos) => {
     try {
@@ -64,6 +68,17 @@ export default function Socios() {
           Number(res.data.precio),
           datos.metodo_pago || "efectivo"
         );
+        // La cuota de inscripción es aparte del pago de la membresía, y
+        // solo se cobra al registrar un socio NUEVO — nunca en
+        // renovaciones ni ediciones. Si es 0 (el admin la puso así en
+        // Usuarios), no se registra un movimiento vacío en Caja.
+        if (cuotaInscripcion > 0) {
+          await cajaService.ingreso(
+            `Cuota de inscripción - ${res.data.nombre} ${res.data.apellido}`,
+            Number(cuotaInscripcion),
+            datos.metodo_pago || "efectivo"
+          );
+        }
       }
       setModalAbierto(false);
       setEditando(null);
@@ -265,6 +280,7 @@ export default function Socios() {
       {modalAbierto && (
         <SocioModal
           socio={editando}
+          cuotaInscripcion={cuotaInscripcion}
           onClose={() => { setModalAbierto(false); setEditando(null); }}
           onSave={guardar}
         />

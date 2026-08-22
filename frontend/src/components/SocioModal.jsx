@@ -6,9 +6,27 @@ import TelefonoInput from "./TelefonoInput";
 
 const TIPOS_MEMBRESIA = ["Mensual", "Trimestral", "Semestral", "Anual", "Personalizado"];
 const PRECIOS_DEFAULT = { Mensual: 200, Trimestral: 550, Semestral: 1100, Anual: 1920, Personalizado: 0 };
+// Mismos valores que DURACIONES_DIAS en backend/app/services/socio_service.py
+// (91 y 182, no 90/180 exactos) — así un plan dura lo mismo sin importar
+// si es una inscripción nueva o una renovación.
+const DIAS_DEFAULT = { Mensual: 30, Trimestral: 91, Semestral: 182, Anual: 365 };
 const PLANES_ESTANDAR = ["Mensual", "Trimestral", "Semestral", "Anual"];
 
-export default function SocioModal({ socio, onClose, onSave }) {
+function sumarDias(fechaISO, dias) {
+  // Ojo con las fechas: new Date("2026-09-20") las interpreta como
+  // UTC medianoche, y sumarle horas con getTime() puede correrse un
+  // día para atrás/adelante según la zona horaria de quien lo usa.
+  // Se separa año/mes/día a mano para evitar ese problema.
+  const [anio, mes, dia] = fechaISO.split("-").map(Number);
+  const fecha = new Date(anio, mes - 1, dia);
+  fecha.setDate(fecha.getDate() + dias);
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth() + 1).padStart(2, "0");
+  const d = String(fecha.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+export default function SocioModal({ socio, cuotaInscripcion = 0, onClose, onSave }) {
   const [form, setForm] = useState(
     socio || {
       nombre: "", apellido: "", telefono: "", correo: "",
@@ -81,8 +99,12 @@ export default function SocioModal({ socio, onClose, onSave }) {
                   if (valor === "Personalizado") {
                     set("tipo_membresia", "");
                   } else {
-                    set("tipo_membresia", valor);
-                    set("precio", PRECIOS_DEFAULT[valor]);
+                    setForm((f) => ({
+                      ...f,
+                      tipo_membresia: valor,
+                      precio: PRECIOS_DEFAULT[valor],
+                      fecha_vencimiento: sumarDias(f.fecha_inscripcion, DIAS_DEFAULT[valor]),
+                    }));
                   }
                 }}
                 className="w-full mt-1 px-3 py-2 rounded-lg outline-none border border-line"
@@ -112,7 +134,26 @@ export default function SocioModal({ socio, onClose, onSave }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-inksoft">Fecha de inscripción</label>
-              <input type="date" value={form.fecha_inscripcion} onChange={(e) => set("fecha_inscripcion", e.target.value)}
+              <input
+                type="date"
+                value={form.fecha_inscripcion}
+                onChange={(e) => {
+                  const nuevaFecha = e.target.value;
+                  // Si es un plan estándar (no personalizado), mover la
+                  // fecha de inicio también recorre el vencimiento la
+                  // misma cantidad de días — así el plan sigue durando
+                  // lo que debe durar. En "Personalizado" no se toca,
+                  // porque ahí el vencimiento lo decide quien lo carga.
+                  if (!esPersonalizado && DIAS_DEFAULT[form.tipo_membresia]) {
+                    setForm((f) => ({
+                      ...f,
+                      fecha_inscripcion: nuevaFecha,
+                      fecha_vencimiento: sumarDias(nuevaFecha, DIAS_DEFAULT[f.tipo_membresia]),
+                    }));
+                  } else {
+                    set("fecha_inscripcion", nuevaFecha);
+                  }
+                }}
                 className="w-full mt-1 px-3 py-2 rounded-lg outline-none border border-line" />
             </div>
             <div>
@@ -134,6 +175,12 @@ export default function SocioModal({ socio, onClose, onSave }) {
                 <option value="efectivo">Efectivo</option>
                 <option value="transferencia">Transferencia</option>
               </select>
+              {cuotaInscripcion > 0 && (
+                <p className="text-xs text-inksoft mt-1.5">
+                  Además del plan, se va a cobrar <span className="font-semibold text-ink">Q{cuotaInscripcion}</span> de
+                  cuota de inscripción (solo aplica esta vez, no en renovaciones). Se puede cambiar el monto en Usuarios.
+                </p>
+              )}
             </div>
           )}
           <label className="flex items-center gap-2 text-sm text-ink">

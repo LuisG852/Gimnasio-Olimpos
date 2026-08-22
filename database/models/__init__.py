@@ -9,9 +9,10 @@ from database.models.compra_producto import CompraProducto
 from database.models.ejercicio import Ejercicio
 from database.models.gasto import Gasto
 from database.models.ingreso_pendiente import IngresoPendiente
+from database.models.configuracion import Configuracion
 
 __all__ = [
     "Socio", "Medicion", "Comprobante", "Usuario", "MovimientoCaja",
     "Producto", "VentaProducto", "CompraProducto", "Ejercicio", "Gasto",
-    "IngresoPendiente",
+    "IngresoPendiente", "Configuracion",
 ]

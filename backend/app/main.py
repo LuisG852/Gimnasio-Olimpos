@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.api.routers import socios, mediciones, comprobantes, auth, usuarios, caja, backup, inventario, recordatorios, planes, ejercicios, contabilidad, actividad
+from app.api.routers import socios, mediciones, comprobantes, auth, usuarios, caja, backup, inventario, recordatorios, planes, ejercicios, contabilidad, actividad, configuracion
 from database.database import SessionLocal
 from database.models import Usuario
 from app.core.security import hash_password
@@ -35,6 +35,7 @@ app.include_router(planes.router, prefix="/api/planes", tags=["Planes"])
 app.include_router(ejercicios.router, prefix="/api/ejercicios", tags=["Ejercicios"])
 app.include_router(contabilidad.router, prefix="/api/contabilidad", tags=["Contabilidad"])
 app.include_router(actividad.router, prefix="/api/actividad", tags=["Actividad"])
+app.include_router(configuracion.router, prefix="/api/configuracion", tags=["Configuración"])
 
 
 @app.on_event("startup")

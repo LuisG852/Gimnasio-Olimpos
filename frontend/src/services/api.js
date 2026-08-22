@@ -129,4 +129,9 @@ export const actividadService = {
   usuarios: () => api.get("/actividad/usuarios"),
 };
 
+export const configuracionService = {
+  obtenerCuotaInscripcion: () => api.get("/configuracion/cuota-inscripcion"),
+  actualizarCuotaInscripcion: (cuota_inscripcion) => api.put("/configuracion/cuota-inscripcion", { cuota_inscripcion }),
+};
+
 export default api;

@@ -1,7 +1,7 @@
 import React from "react";
 import { useEffect, useState, useRef } from "react";
-import { UserPlus, Pencil, Trash2, X, DatabaseBackup, UploadCloud } from "lucide-react";
-import { usuarioService, backupService } from "../services/api";
+import { UserPlus, Pencil, Trash2, X, DatabaseBackup, UploadCloud, Coins } from "lucide-react";
+import { usuarioService, backupService, configuracionService } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import ConfirmModal from "../components/ConfirmModal";
 import AvisoModal from "../components/AvisoModal";
@@ -24,13 +24,39 @@ export default function Usuarios() {
   const [passwordRestaurar, setPasswordRestaurar] = useState("");
   const [restaurando, setRestaurando] = useState(false);
   const [estadoBackup, setEstadoBackup] = useState(null);
+  const [cuotaInscripcion, setCuotaInscripcion] = useState("");
+  const [guardandoCuota, setGuardandoCuota] = useState(false);
   const inputArchivoRef = useRef(null);
 
   const cargar = () => usuarioService.listar().then((res) => setUsuarios(res.data));
   useEffect(() => { cargar(); }, []);
   useEffect(() => { backupService.estado().then(({ data }) => setEstadoBackup(data)).catch(() => {}); }, []);
+  useEffect(() => {
+    configuracionService.obtenerCuotaInscripcion().then(({ data }) => setCuotaInscripcion(String(data.cuota_inscripcion)));
+  }, []);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const guardarCuotaInscripcion = async () => {
+    const valor = Number(cuotaInscripcion);
+    if (Number.isNaN(valor) || valor < 0) {
+      setAviso({ titulo: "Valor inválido", tipo: "advertencia", mensaje: "La cuota de inscripción debe ser un número de 0 o más." });
+      return;
+    }
+    setGuardandoCuota(true);
+    try {
+      await configuracionService.actualizarCuotaInscripcion(valor);
+      setAviso({ titulo: "Guardado", tipo: "exito", mensaje: `La cuota de inscripción quedó en Q${valor}.` });
+    } catch (error) {
+      setAviso({
+        titulo: "No se pudo guardar",
+        tipo: "advertencia",
+        mensaje: error?.response?.data?.detail || "No se pudo actualizar la cuota de inscripción.",
+      });
+    } finally {
+      setGuardandoCuota(false);
+    }
+  };
 
   const empezarEdicion = (u) => {
     setEditandoId(u.id);
@@ -210,6 +236,38 @@ export default function Usuarios() {
             )}
           </div>
         )}
+      </div>
+
+      <div className="rounded-xl p-5 bg-panel border border-line space-y-3">
+        <div>
+          <h3 className="font-display text-lg text-ink flex items-center gap-2">
+            <Coins size={18} className="text-accent" /> Cuota de inscripción
+          </h3>
+          <p className="text-xs text-inksoft mt-1">
+            Monto que se cobra, aparte del plan, solo la primera vez que se inscribe un socio nuevo — nunca en
+            renovaciones. Se aplica automáticamente al registrar un socio.
+          </p>
+        </div>
+        <div className="flex items-end gap-3">
+          <div>
+            <label className="text-xs font-semibold text-inksoft">Monto (Q)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={cuotaInscripcion}
+              onChange={(e) => setCuotaInscripcion(e.target.value)}
+              className="w-32 mt-1 px-3 py-2 rounded-lg outline-none border border-line"
+            />
+          </div>
+          <button
+            onClick={guardarCuotaInscripcion}
+            disabled={guardandoCuota}
+            className="px-4 py-2.5 rounded-lg font-semibold bg-accent text-accentink transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-60"
+          >
+            {guardandoCuota ? "Guardando..." : "Guardar"}
+          </button>
+        </div>
       </div>
 
       <div className="rounded-xl p-5 bg-badbg border border-bad space-y-3">
