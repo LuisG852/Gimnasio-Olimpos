@@ -50,6 +50,7 @@ export const comprobanteService = {
   historialPorSocio: (socioId) => api.get(`/comprobantes/socio/${socioId}/historial`),
   descargarPdf: (id) => api.get(`/comprobantes/${id}/pdf`, { responseType: "blob" }),
   ingresosMensuales: (meses = 6) => api.get(`/comprobantes/ingresos-mensuales?meses=${meses}`),
+  enviarBienvenidaCorreo: (socioId) => api.post(`/comprobantes/socio/${socioId}/bienvenida-correo`),
 };
 
 export const usuarioService = {
@@ -57,6 +58,7 @@ export const usuarioService = {
   crear: (datos) => api.post("/usuarios/", datos),
   actualizar: (id, datos) => api.put(`/usuarios/${id}`, datos),
   eliminar: (id) => api.delete(`/usuarios/${id}`),
+  modulosPermisos: () => api.get("/usuarios/modulos-permisos"),
 };
 
 export const cajaService = {
@@ -132,6 +134,8 @@ export const actividadService = {
 export const configuracionService = {
   obtenerCuotaInscripcion: () => api.get("/configuracion/cuota-inscripcion"),
   actualizarCuotaInscripcion: (cuota_inscripcion) => api.put("/configuracion/cuota-inscripcion", { cuota_inscripcion }),
+  obtenerPreciosMembresia: () => api.get("/configuracion/precios-membresia"),
+  actualizarPreciosMembresia: (datos) => api.put("/configuracion/precios-membresia", datos),
 };
 
 export default api;

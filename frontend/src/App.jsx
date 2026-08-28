@@ -11,25 +11,28 @@ import Ejercicios from "./pages/Ejercicios";
 import Contabilidad from "./pages/Contabilidad";
 import Actividad from "./pages/Actividad";
 import Login from "./pages/Login";
+import ConfiguracionInicial from "./pages/ConfiguracionInicial";
 import ConfirmModal from "./components/ConfirmModal";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { backupService } from "./services/api";
 import logo from "./assets/olimpos-logo.png";
 
+function moduloActivo(usuario, modulo) {
+  if (usuario?.es_admin) return true;
+  return !!usuario?.permisos?.[modulo]?.activo;
+}
+
 function tabsPara(usuario) {
-  const tabs = [
-    { id: "socios", label: "Socios", icon: Users },
-    { id: "caja", label: "Caja", icon: Wallet },
-  ];
-  if (usuario?.es_admin) {
-    tabs.unshift({ id: "dashboard", label: "Dashboard", icon: LayoutDashboard });
-    tabs.push({ id: "inventario", label: "Inventario", icon: Boxes });
-    tabs.push({ id: "ejercicios", label: "Ejercicios", icon: Dumbbell });
-    tabs.push({ id: "contabilidad", label: "Contabilidad", icon: Calculator });
-    tabs.push({ id: "actividad", label: "Actividad", icon: History });
-    tabs.push({ id: "mensajes", label: "Mensajes", icon: Settings });
-    tabs.push({ id: "usuarios", label: "Usuarios", icon: UserCog });
-  }
+  const tabs = [];
+  if (usuario?.es_admin) tabs.push({ id: "dashboard", label: "Dashboard", icon: LayoutDashboard });
+  if (moduloActivo(usuario, "socios")) tabs.push({ id: "socios", label: "Socios", icon: Users });
+  if (moduloActivo(usuario, "caja")) tabs.push({ id: "caja", label: "Caja", icon: Wallet });
+  if (moduloActivo(usuario, "inventario")) tabs.push({ id: "inventario", label: "Inventario", icon: Boxes });
+  if (moduloActivo(usuario, "ejercicios")) tabs.push({ id: "ejercicios", label: "Ejercicios", icon: Dumbbell });
+  if (usuario?.es_admin) tabs.push({ id: "contabilidad", label: "Contabilidad", icon: Calculator });
+  if (usuario?.es_admin) tabs.push({ id: "actividad", label: "Actividad", icon: History });
+  if (moduloActivo(usuario, "mensajes")) tabs.push({ id: "mensajes", label: "Mensajes", icon: Settings });
+  if (usuario?.es_admin) tabs.push({ id: "usuarios", label: "Usuarios", icon: UserCog });
   return tabs;
 }
 
@@ -49,7 +52,7 @@ function useTema() {
 }
 
 function AppInterno() {
-  const { usuario, logout, cargando } = useAuth();
+  const { usuario, logout, cargando, necesitaConfiguracion } = useAuth();
   const [tab, setTab] = useState("socios");
   const [oscuro, setOscuro] = useTema();
   const [confirmandoSalida, setConfirmandoSalida] = useState(false);
@@ -58,7 +61,7 @@ function AppInterno() {
   const [avisoBackupCerrado, setAvisoBackupCerrado] = useState(false);
 
   useEffect(() => {
-    setTab("socios");
+    setTab(usuario?.es_admin ? "dashboard" : "");
   }, [usuario?.id]);
 
   useEffect(() => {
@@ -76,9 +79,15 @@ function AppInterno() {
   }, [usuario?.id]);
 
   if (cargando) return null;
+  if (necesitaConfiguracion) return <ConfiguracionInicial />;
   if (!usuario) return <Login />;
 
   const TABS = tabsPara(usuario);
+  // Si la pestaña actual ya no está disponible para este usuario (por
+  // ejemplo, el admin le quitó ese permiso mientras tenía la sesión
+  // abierta, o es la primera vez que carga), se cae a la primera
+  // pestaña que sí pueda ver — nunca a una pantalla en blanco.
+  const tabActiva = TABS.some((t) => t.id === tab) ? tab : TABS[0]?.id;
 
   const confirmarCerrarSesion = async () => {
     if (cerrandoSesion) return;
@@ -108,7 +117,7 @@ function AppInterno() {
 
   return (
     <div className="min-h-screen bg-bg font-body">
-      <header className="border-b border-line bg-panel">
+      <header className="sticky top-0 z-40 border-b border-line bg-panel">
         <div className="px-6 pt-4 pb-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img
@@ -145,7 +154,7 @@ function AppInterno() {
               onClick={() => setTab(t.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold
                 transition-all duration-200 ease-out hover:scale-105 active:scale-95
-                ${tab === t.id ? "bg-accent text-accentink shadow-md" : "text-inksoft hover:bg-bg hover:text-ink"}`}
+                ${tabActiva === t.id ? "bg-accent text-accentink shadow-md" : "text-inksoft hover:bg-bg hover:text-ink"}`}
             >
               <t.icon size={15} /> {t.label}
             </button>
@@ -170,15 +179,20 @@ function AppInterno() {
       )}
 
       <main className="p-6 max-w-6xl mx-auto">
-        {tab === "dashboard" && usuario.es_admin && <Dashboard />}
-        {tab === "socios" && <Socios />}
-        {tab === "caja" && <Caja />}
-        {tab === "inventario" && usuario.es_admin && <Inventario />}
-        {tab === "ejercicios" && usuario.es_admin && <Ejercicios />}
-        {tab === "contabilidad" && usuario.es_admin && <Contabilidad />}
-        {tab === "actividad" && usuario.es_admin && <Actividad />}
-        {tab === "mensajes" && usuario.es_admin && <Mensajes />}
-        {tab === "usuarios" && usuario.es_admin && <Usuarios />}
+        {tabActiva === "dashboard" && <Dashboard />}
+        {tabActiva === "socios" && <Socios />}
+        {tabActiva === "caja" && <Caja />}
+        {tabActiva === "inventario" && <Inventario />}
+        {tabActiva === "ejercicios" && <Ejercicios />}
+        {tabActiva === "contabilidad" && <Contabilidad />}
+        {tabActiva === "actividad" && <Actividad />}
+        {tabActiva === "mensajes" && <Mensajes />}
+        {tabActiva === "usuarios" && <Usuarios />}
+        {!tabActiva && (
+          <div className="text-center py-16 text-inksoft">
+            Tu usuario todavía no tiene acceso a ninguna pestaña. Pedile al administrador que te asigne permisos.
+          </div>
+        )}
       </main>
 
       {confirmandoSalida && (

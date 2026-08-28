@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from database.models import Usuario
 from app.schemas.usuario import UsuarioCreate, UsuarioUpdate
 from app.core.security import hash_password, verificar_password
+from app.core.permisos import permisos_por_defecto
 
 
 def existe_usuario(db: Session, usuario: str, excluir_id: int | None = None):
@@ -19,12 +20,18 @@ def crear_usuario(db: Session, datos: UsuarioCreate):
     if existe_usuario(db, datos.usuario):
         raise ValueError("Ya existe un usuario con ese nombre de usuario.")
 
+    # Un usuario nuevo (no admin) arranca sin ver nada hasta que el
+    # administrador le prenda algo a propósito — más seguro que
+    # arrancar con todo activado por accidente.
+    permisos = datos.permisos if datos.permisos is not None else permisos_por_defecto(activo=False)
+
     nuevo = Usuario(
         nombre=datos.nombre,
         usuario=datos.usuario,
         password_hash=hash_password(datos.password),
         es_admin=datos.es_admin,
         activo=True,
+        permisos=permisos,
     )
     db.add(nuevo)
     db.commit()
@@ -58,6 +65,8 @@ def actualizar_usuario(db: Session, usuario_id: int, datos: UsuarioUpdate, admin
     usuario.activo = datos.activo
     if datos.password:
         usuario.password_hash = hash_password(datos.password)
+    if datos.permisos is not None:
+        usuario.permisos = datos.permisos
 
     db.commit()
     db.refresh(usuario)

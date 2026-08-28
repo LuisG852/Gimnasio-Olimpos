@@ -2,6 +2,8 @@ import React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Pencil, Trash2, Search, Download, Boxes, Wrench, ShoppingBag, Clock, PackagePlus, PackageSearch } from "lucide-react";
 import { inventarioService } from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { puede } from "../utils/permisos";
 import ProductoModal from "../components/ProductoModal";
 import CompraExistenteModal from "../components/CompraExistenteModal";
 import HistorialComprasModal from "../components/HistorialComprasModal";
@@ -19,6 +21,7 @@ const FILTROS_TIPO = [
 const q = (n) => `Q${Number(n ?? 0).toFixed(2)}`;
 
 export default function Inventario() {
+  const { usuario } = useAuth();
   const [productos, setProductos] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("todos");
@@ -153,11 +156,14 @@ export default function Inventario() {
             </button>
           ))}
         </div>
-        <button onClick={() => setExportando(true)}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold border border-line text-inksoft hover:bg-panel transition-all duration-150 hover:scale-105 active:scale-95">
-          <Download size={16} /> Exportar
-        </button>
+        {puede(usuario, "inventario", "exportar") && (
+          <button onClick={() => setExportando(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold border border-line text-inksoft hover:bg-panel transition-all duration-150 hover:scale-105 active:scale-95">
+            <Download size={16} /> Exportar
+          </button>
+        )}
 
+        {(puede(usuario, "inventario", "comprar") || puede(usuario, "inventario", "editar_producto")) && (
         <div className="relative">
           <button onClick={() => setMenuCompra((v) => !v)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-accent text-accentink transition-all duration-200 hover:scale-105 active:scale-95">
@@ -165,19 +171,24 @@ export default function Inventario() {
           </button>
           {menuCompra && (
             <div className="absolute right-0 mt-2 w-56 rounded-xl border border-line bg-panel shadow-lg z-50 overflow-hidden">
-              <button
-                onClick={() => { setMenuCompra(false); setModalExistenteAbierto(true); }}
-                className="w-full flex items-center gap-2 px-4 py-3 text-sm text-ink hover:bg-bg text-left">
-                <PackageSearch size={16} /> Producto existente
-              </button>
-              <button
-                onClick={() => { setMenuCompra(false); setModalNuevoAbierto(true); }}
-                className="w-full flex items-center gap-2 px-4 py-3 text-sm text-ink hover:bg-bg text-left border-t border-line">
-                <PackagePlus size={16} /> Producto nuevo
-              </button>
+              {puede(usuario, "inventario", "comprar") && (
+                <button
+                  onClick={() => { setMenuCompra(false); setModalExistenteAbierto(true); }}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-ink hover:bg-bg text-left">
+                  <PackageSearch size={16} /> Producto existente
+                </button>
+              )}
+              {puede(usuario, "inventario", "editar_producto") && (
+                <button
+                  onClick={() => { setMenuCompra(false); setModalNuevoAbierto(true); }}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-ink hover:bg-bg text-left border-t border-line">
+                  <PackagePlus size={16} /> Producto nuevo
+                </button>
+              )}
             </div>
           )}
         </div>
+        )}
       </div>
 
       <div className="rounded-xl overflow-hidden bg-panel border border-line">
@@ -222,16 +233,20 @@ export default function Inventario() {
                       className="p-2 rounded-lg text-inksoft hover:bg-bg transition-transform hover:scale-110">
                       <Clock size={15} />
                     </button>
-                    <button onClick={() => setEditando(p)}
-                      title="Editar"
-                      className="p-2 rounded-lg text-inksoft hover:bg-bg transition-transform hover:scale-110">
-                      <Pencil size={15} />
-                    </button>
-                    <button onClick={() => setEliminando(p)}
-                      title="Dar de baja"
-                      className="p-2 rounded-lg text-bad hover:bg-badbg transition-transform hover:scale-110">
-                      <Trash2 size={15} />
-                    </button>
+                    {puede(usuario, "inventario", "editar_producto") && (
+                      <button onClick={() => setEditando(p)}
+                        title="Editar"
+                        className="p-2 rounded-lg text-inksoft hover:bg-bg transition-transform hover:scale-110">
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                    {puede(usuario, "inventario", "eliminar") && (
+                      <button onClick={() => setEliminando(p)}
+                        title="Dar de baja"
+                        className="p-2 rounded-lg text-bad hover:bg-badbg transition-transform hover:scale-110">
+                        <Trash2 size={15} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

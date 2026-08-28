@@ -2,6 +2,8 @@ import React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Search, EyeOff, Eye } from "lucide-react";
 import { ejercicioService } from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { puede } from "../utils/permisos";
 
 const NOMBRES_MUSCULO = {
   quads: "Cuádriceps", hamstrings: "Femorales", glutes: "Glúteos",
@@ -14,6 +16,7 @@ const NOMBRES_MUSCULO = {
 };
 
 export default function Ejercicios() {
+  const { usuario } = useAuth();
   const [ejercicios, setEjercicios] = useState([]);
   const [musculos, setMusculos] = useState([]);
   const [musculoElegido, setMusculoElegido] = useState("");
@@ -115,12 +118,14 @@ export default function Ejercicios() {
                   <td className="px-4 py-2 text-ink font-semibold">{ej.nombre}</td>
                   <td className="px-4 py-2 text-inksoft">{NOMBRES_MUSCULO[ej.musculo] || ej.musculo}</td>
                   <td className="px-4 py-2">
-                    <button onClick={() => alternarActivo(ej)}
-                      title={ej.activo ? "Ocultar de los planes" : "Volver a mostrar"}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ml-auto transition-all duration-150 hover:scale-105 active:scale-95
-                        ${ej.activo ? "border border-line text-inksoft hover:bg-bg" : "bg-accent text-accentink"}`}>
-                      {ej.activo ? <><EyeOff size={13} /> Ocultar</> : <><Eye size={13} /> Mostrar</>}
-                    </button>
+                    {puede(usuario, "ejercicios", "editar") && (
+                      <button onClick={() => alternarActivo(ej)}
+                        title={ej.activo ? "Ocultar de los planes" : "Volver a mostrar"}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ml-auto transition-all duration-150 hover:scale-105 active:scale-95
+                          ${ej.activo ? "border border-line text-inksoft hover:bg-bg" : "bg-accent text-accentink"}`}>
+                        {ej.activo ? <><EyeOff size={13} /> Ocultar</> : <><Eye size={13} /> Mostrar</>}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -1,7 +1,8 @@
 """
 Router de socios.
-Requiere estar logueado para todo. Las estadísticas (dinero) son solo
-para administradores.
+Requiere estar logueado y tener el módulo "socios" activo. Crear,
+editar, eliminar y renovar además exigen su acción específica. Las
+estadísticas (dinero) son solo para administradores.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,9 +11,9 @@ from sqlalchemy.orm import Session
 from database.database import get_db
 from app.schemas.socio import SocioCreate, SocioUpdate, SocioOut, SocioRenovar, EstadisticasOut
 from app.services import socio_service
-from app.api.deps import get_usuario_actual, get_admin_actual
+from app.api.deps import get_usuario_actual, get_admin_actual, requiere_permiso
 
-router = APIRouter(dependencies=[Depends(get_usuario_actual)])
+router = APIRouter(dependencies=[Depends(requiere_permiso("socios"))])
 
 
 @router.get("/estadisticas", response_model=EstadisticasOut, dependencies=[Depends(get_admin_actual)])
@@ -25,7 +26,7 @@ def listar_socios(db: Session = Depends(get_db)):
     return socio_service.obtener_socios(db)
 
 
-@router.post("/", response_model=SocioOut)
+@router.post("/", response_model=SocioOut, dependencies=[Depends(requiere_permiso("socios", "crear"))])
 def crear_socio(socio: SocioCreate, db: Session = Depends(get_db)):
     try:
         return socio_service.crear_socio(db, socio)
@@ -41,7 +42,7 @@ def obtener_socio(socio_id: int, db: Session = Depends(get_db)):
     return socio
 
 
-@router.put("/{socio_id}", response_model=SocioOut)
+@router.put("/{socio_id}", response_model=SocioOut, dependencies=[Depends(requiere_permiso("socios", "editar"))])
 def actualizar_socio(socio_id: int, socio: SocioUpdate, db: Session = Depends(get_db)):
     try:
         actualizado = socio_service.actualizar_socio(db, socio_id, socio)
@@ -52,7 +53,7 @@ def actualizar_socio(socio_id: int, socio: SocioUpdate, db: Session = Depends(ge
     return actualizado
 
 
-@router.post("/{socio_id}/renovar", response_model=SocioOut)
+@router.post("/{socio_id}/renovar", response_model=SocioOut, dependencies=[Depends(requiere_permiso("socios", "renovar"))])
 def renovar_socio(socio_id: int, datos: SocioRenovar, db: Session = Depends(get_db)):
     renovado = socio_service.renovar_socio(db, socio_id, datos)
     if not renovado:
@@ -60,7 +61,7 @@ def renovar_socio(socio_id: int, datos: SocioRenovar, db: Session = Depends(get_
     return renovado
 
 
-@router.delete("/{socio_id}")
+@router.delete("/{socio_id}", dependencies=[Depends(requiere_permiso("socios", "eliminar"))])
 def eliminar_socio(socio_id: int, db: Session = Depends(get_db)):
     eliminado = socio_service.eliminar_socio(db, socio_id)
     if not eliminado:

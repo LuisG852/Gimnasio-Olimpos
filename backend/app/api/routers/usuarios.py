@@ -9,8 +9,16 @@ from database.database import get_db
 from app.schemas.usuario import UsuarioCreate, UsuarioUpdate, UsuarioOut
 from app.services import usuario_service
 from app.api.deps import get_admin_actual
+from app.core.permisos import MODULOS_PERMISOS
 
 router = APIRouter(dependencies=[Depends(get_admin_actual)])
+
+
+@router.get("/modulos-permisos")
+def modulos_permisos():
+    """Para que la pantalla de Usuarios dibuje los checkboxes exactos
+    que el backend realmente valida — nunca desincronizados."""
+    return MODULOS_PERMISOS
 
 
 @router.get("/", response_model=list[UsuarioOut])

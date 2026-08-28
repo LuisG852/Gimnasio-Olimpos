@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Wallet, PlusCircle, MinusCircle, Lock, Unlock, CalendarDays, Eye, ShoppingBag, CircleAlert, Check } from "lucide-react";
 import { cajaService, inventarioService } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { puede } from "../utils/permisos";
 import AvisoModal from "../components/AvisoModal";
 import ConfirmModal from "../components/ConfirmModal";
 
@@ -193,13 +194,15 @@ export default function Caja() {
             </button>
           )}
         </div>
-        <button onClick={() => setMostrarHistorial((v) => !v)}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold border border-line text-inksoft hover:bg-panel transition-all duration-150 hover:scale-105 active:scale-95">
-          <Eye size={16} /> {mostrarHistorial ? "Ocultar" : "Ver"} cierres anteriores
-        </button>
+        {puede(usuario, "caja", "ver_anteriores") && (
+          <button onClick={() => setMostrarHistorial((v) => !v)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold border border-line text-inksoft hover:bg-panel transition-all duration-150 hover:scale-105 active:scale-95">
+            <Eye size={16} /> {mostrarHistorial ? "Ocultar" : "Ver"} cierres anteriores
+          </button>
+        )}
       </div>
 
-      {mostrarHistorial && (
+      {mostrarHistorial && puede(usuario, "caja", "ver_anteriores") && (
         <div className="rounded-xl overflow-hidden border border-line">
           {historial.length === 0 ? (
             <p className="p-4 text-sm text-inksoft">Todavía no hay ningún cierre registrado.</p>
@@ -303,6 +306,7 @@ export default function Caja() {
 
           {esHoy && !resumen.tiene_cierre && (
             <>
+              {puede(usuario, "inventario", "vender") && (
               <form onSubmit={venderProducto} className="rounded-xl p-5 bg-panel border border-line space-y-4">
                 <h3 className="font-display text-lg text-ink flex items-center gap-2">
                   <ShoppingBag size={18} className="text-good" /> Vender producto
@@ -340,7 +344,9 @@ export default function Caja() {
                   </button>
                 )}
               </form>
+              )}
 
+              {puede(usuario, "caja", "ingreso") && (
               <form onSubmit={agregarIngreso} className="rounded-xl p-5 bg-panel border border-line space-y-4">
                 <h3 className="font-display text-lg text-ink flex items-center gap-2">
                   <PlusCircle size={18} className="text-good" /> Registrar ingreso
@@ -368,7 +374,9 @@ export default function Caja() {
                   Agregar ingreso
                 </button>
               </form>
+              )}
 
+              {puede(usuario, "caja", "gasto") && (
               <form onSubmit={agregarGasto} className="rounded-xl p-5 bg-panel border border-line space-y-4">
                 <h3 className="font-display text-lg text-ink flex items-center gap-2">
                   <MinusCircle size={18} className="text-bad" /> Registrar gasto
@@ -386,11 +394,14 @@ export default function Caja() {
                   Agregar gasto
                 </button>
               </form>
+              )}
 
+              {puede(usuario, "caja", "cerrar") && (
               <button onClick={cerrarCaja}
                 className="w-full py-3 rounded-xl font-semibold bg-ink text-panel flex items-center justify-center gap-2 transition-all duration-200 hover:scale-[1.01] active:scale-95">
                 <Lock size={18} /> Cerrar caja del día
               </button>
+              )}
             </>
           )}
 

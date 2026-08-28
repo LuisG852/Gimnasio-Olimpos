@@ -1,5 +1,13 @@
 """
 Router de comprobantes.
+Pertenece al módulo "socios". El historial de pagos tiene su propia
+acción ("historial"). Generar/reimprimir el comprobante (crear, ver
+el último, descargar el PDF) se queda solo con el acceso general al
+módulo: esa misma función se usa automáticamente al registrar un
+socio nuevo o renovarlo, así que exigirle también el permiso puntual
+de "reimpresión" rompería el registro normal para alguien que no
+tenga ese detalle activado. El botón de reimprimir sí se esconde en
+pantalla según ese permiso — la protección ahí es a nivel de interfaz.
 """
 
 import io
@@ -11,9 +19,9 @@ from sqlalchemy.orm import Session
 from database.database import get_db
 from app.schemas.comprobante import ComprobanteCreate, ComprobanteOut, IngresoMensualOut
 from app.services import comprobante_service
-from app.api.deps import get_usuario_actual, get_admin_actual
+from app.api.deps import get_usuario_actual, get_admin_actual, requiere_permiso
 
-router = APIRouter(dependencies=[Depends(get_usuario_actual)])
+router = APIRouter(dependencies=[Depends(requiere_permiso("socios"))])
 
 
 @router.post("/", response_model=ComprobanteOut)
@@ -32,9 +40,19 @@ def ultimo_comprobante(socio_id: int, db: Session = Depends(get_db)):
     return comprobante
 
 
-@router.get("/socio/{socio_id}/historial", response_model=list[ComprobanteOut])
+@router.get("/socio/{socio_id}/historial", response_model=list[ComprobanteOut], dependencies=[Depends(requiere_permiso("socios", "historial"))])
 def historial_comprobantes(socio_id: int, db: Session = Depends(get_db)):
     return comprobante_service.listar_por_socio(db, socio_id)
+
+
+@router.post("/socio/{socio_id}/bienvenida-correo")
+def enviar_bienvenida_correo(socio_id: int, db: Session = Depends(get_db)):
+    """Bienvenida por correo con el comprobante adjunto — se usa cuando
+    el socio tiene correo registrado, en vez de abrir WhatsApp."""
+    resultado = comprobante_service.enviar_bienvenida_por_correo(db, socio_id)
+    if not resultado["ok"]:
+        raise HTTPException(status_code=400, detail=resultado["error"])
+    return {"mensaje": "Correo de bienvenida enviado."}
 
 
 @router.get("/ingresos-mensuales", response_model=list[IngresoMensualOut], dependencies=[Depends(get_admin_actual)])

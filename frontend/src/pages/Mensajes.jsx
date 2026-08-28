@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { MessageCircle, CalendarClock, Receipt, BellOff, Mail } from "lucide-react";
 import { obtenerPlantillas, guardarPlantillas } from "../utils/whatsapp";
 import { recordatoriosService, socioService } from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { puede } from "../utils/permisos";
 
 const SECCIONES = [
   { id: "bienvenida", label: "Bienvenida", icon: MessageCircle, variables: "{nombre}" },
@@ -13,6 +15,7 @@ const SECCIONES = [
 ];
 
 export default function Mensajes() {
+  const { usuario } = useAuth();
   const [form, setForm] = useState(obtenerPlantillas());
   const [seccion, setSeccion] = useState("bienvenida");
   const [guardado, setGuardado] = useState(false);
@@ -96,10 +99,12 @@ export default function Mensajes() {
               abrieron) entrando a tu cuenta de Brevo → Estadísticas → Transaccional.
             </p>
 
-            <button onClick={probarEnvio} disabled={enviando}
-              className="px-5 py-2.5 rounded-lg font-semibold bg-accent text-accentink transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50">
-              {enviando ? "Enviando..." : "Revisar y enviar vencimientos ahora"}
-            </button>
+            {puede(usuario, "mensajes", "enviar_recordatorios") && (
+              <button onClick={probarEnvio} disabled={enviando}
+                className="px-5 py-2.5 rounded-lg font-semibold bg-accent text-accentink transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50">
+                {enviando ? "Enviando..." : "Revisar y enviar vencimientos ahora"}
+              </button>
+            )}
 
             {resultado && (
               <div className="rounded-lg p-3 text-sm bg-bg border border-line">
@@ -120,6 +125,7 @@ export default function Mensajes() {
             )}
           </div>
 
+          {puede(usuario, "mensajes", "enviar_recordatorios") && (
           <div className="rounded-xl p-5 bg-panel border border-line space-y-4">
             <h3 className="font-display text-lg text-ink">Reenviar a un socio en específico</h3>
             <p className="text-sm text-inksoft">
@@ -155,6 +161,7 @@ export default function Mensajes() {
               </div>
             )}
           </div>
+          )}
         </div>
       ) : (
         <div className="flex-1 rounded-xl p-5 bg-panel border border-line space-y-3">
@@ -165,15 +172,18 @@ export default function Mensajes() {
             rows={8}
             value={form[actual.id]}
             onChange={(e) => setForm((f) => ({ ...f, [actual.id]: e.target.value }))}
-            className="w-full px-3 py-2 rounded-lg outline-none text-sm border border-line"
+            disabled={!puede(usuario, "mensajes", "editar_plantillas")}
+            className="w-full px-3 py-2 rounded-lg outline-none text-sm border border-line disabled:opacity-60"
           />
 
-          <div className="flex justify-end">
-            <button onClick={guardar}
-              className="px-5 py-2.5 rounded-lg font-semibold bg-accent text-accentink transition-all duration-200 hover:scale-105 active:scale-95">
-              {guardado ? "Guardado ✓" : "Guardar"}
-            </button>
-          </div>
+          {puede(usuario, "mensajes", "editar_plantillas") && (
+            <div className="flex justify-end">
+              <button onClick={guardar}
+                className="px-5 py-2.5 rounded-lg font-semibold bg-accent text-accentink transition-all duration-200 hover:scale-105 active:scale-95">
+                {guardado ? "Guardado ✓" : "Guardar"}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

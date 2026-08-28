@@ -1,10 +1,12 @@
 import React from "react";
 import { useEffect, useState, useMemo } from "react";
 import { Plus, Pencil, Trash2, MessageCircle, CalendarClock, Search, RefreshCw, Ruler, Receipt, BellOff, History, Download } from "lucide-react";
-import { socioService, cajaService, configuracionService } from "../services/api";
+import { socioService, cajaService, configuracionService, comprobanteService } from "../services/api";
 import { estadoSocio, diasHasta, aplicarPlantilla, abrirWhatsapp, obtenerPlantillas, prepararVentanaWhatsapp } from "../utils/whatsapp";
 import { generarNuevoComprobante, reimprimirOGenerarComprobante } from "../utils/comprobante";
 import { exportarSociosExcel } from "../utils/exportarSocios";
+import { useAuth } from "../context/AuthContext";
+import { puede } from "../utils/permisos";
 import Badge from "../components/Badge";
 import SocioModal from "../components/SocioModal";
 import RenovarModal from "../components/RenovarModal";
@@ -35,6 +37,7 @@ function textoDias(dias) {
 }
 
 export default function Socios() {
+  const { usuario } = useAuth();
   const [socios, setSocios] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("todos");
@@ -46,12 +49,16 @@ export default function Socios() {
   const [eliminando, setEliminando] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [cuotaInscripcion, setCuotaInscripcion] = useState(0);
+  const [precios, setPrecios] = useState({});
 
   const cargar = () => socioService.listar().then((res) => setSocios(res.data));
 
   useEffect(() => { cargar(); }, []);
   useEffect(() => {
     configuracionService.obtenerCuotaInscripcion().then(({ data }) => setCuotaInscripcion(data.cuota_inscripcion));
+  }, []);
+  useEffect(() => {
+    configuracionService.obtenerPreciosMembresia().then(({ data }) => setPrecios(data.precios));
   }, []);
 
   const guardar = async (datos) => {
@@ -60,8 +67,9 @@ export default function Socios() {
         await socioService.actualizar(datos.id, datos);
       } else {
         const res = await socioService.crear(datos);
-        const plantillas = obtenerPlantillas();
-        abrirWhatsapp(res.data.telefono, aplicarPlantilla(plantillas.bienvenida, res.data));
+        // El comprobante se genera ANTES de decidir cómo mandar la
+        // bienvenida, porque si el socio tiene correo, se adjunta el
+        // PDF al correo — hace falta que ya exista para eso.
         await generarNuevoComprobante(res.data);
         await cajaService.ingreso(
           `Inscripción - ${res.data.nombre} ${res.data.apellido}`,
@@ -78,6 +86,26 @@ export default function Socios() {
             Number(cuotaInscripcion),
             datos.metodo_pago || "efectivo"
           );
+        }
+
+        // Si tiene correo, la bienvenida se manda por correo (con el
+        // comprobante adjunto) — más completo y no depende de que
+        // alguien esté frente a la compu para apretar "enviar" en
+        // WhatsApp Web. Si no tiene correo, se sigue abriendo WhatsApp
+        // como siempre, para poder mandarlo por celular igual.
+        if (res.data.correo) {
+          try {
+            await comprobanteService.enviarBienvenidaCorreo(res.data.id);
+          } catch (errorCorreo) {
+            setAviso({
+              titulo: "Socio registrado",
+              tipo: "advertencia",
+              mensaje: "El socio se guardó bien, pero no se pudo enviar el correo de bienvenida. Podés reenviarlo luego desde Mensajes.",
+            });
+          }
+        } else {
+          const plantillas = obtenerPlantillas();
+          abrirWhatsapp(res.data.telefono, aplicarPlantilla(plantillas.bienvenida, res.data));
         }
       }
       setModalAbierto(false);
@@ -160,15 +188,19 @@ export default function Socios() {
           />
         </div>
         <div className="flex gap-2">
-          <button onClick={() => exportarSociosExcel(filtrados)}
-            title="Exportar la lista que ves ahora a Excel/CSV"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold border border-line text-inksoft transition-all duration-200 hover:scale-105 active:scale-95">
-            <Download size={18} /> Exportar
-          </button>
-          <button onClick={() => { setEditando(null); setModalAbierto(true); }}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold bg-accent text-accentink transition-all duration-200 hover:scale-105 active:scale-95">
-            <Plus size={18} /> Nuevo socio
-          </button>
+          {puede(usuario, "socios", "exportar") && (
+            <button onClick={() => exportarSociosExcel(filtrados)}
+              title="Exportar la lista que ves ahora a Excel/CSV"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold border border-line text-inksoft transition-all duration-200 hover:scale-105 active:scale-95">
+              <Download size={18} /> Exportar
+            </button>
+          )}
+          {puede(usuario, "socios", "crear") && (
+            <button onClick={() => { setEditando(null); setModalAbierto(true); }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold bg-accent text-accentink transition-all duration-200 hover:scale-105 active:scale-95">
+              <Plus size={18} /> Nuevo socio
+            </button>
+          )}
         </div>
       </div>
 
@@ -224,49 +256,67 @@ export default function Socios() {
                     <td className={`px-5 py-3 font-semibold ${TONE_TEXTO[estado.tone]}`}>{textoDias(dias)}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-1">
-                        <button title="Renovar membresía"
-                          onClick={() => setRenovando(s)}
-                          className="p-2 rounded-lg hover:opacity-70 text-gold transition-transform duration-150 hover:scale-110 active:scale-90">
-                          <RefreshCw size={17} />
-                        </button>
-                        <button title="Medidas corporales"
-                          onClick={() => setMidiendo(s)}
-                          className="p-2 rounded-lg hover:opacity-70 text-ink transition-transform duration-150 hover:scale-110 active:scale-90">
-                          <Ruler size={17} />
-                        </button>
-                        <button title="Historial de pagos"
-                          onClick={() => setVerHistorial(s)}
-                          className="p-2 rounded-lg hover:opacity-70 text-inksoft transition-transform duration-150 hover:scale-110 active:scale-90">
-                          <History size={17} />
-                        </button>
-                        <button title="Comprobante de pago (reimprime el último, o genera el primero)"
-                          onClick={() => { prepararVentanaWhatsapp(); reimprimirOGenerarComprobante(s); }}
-                          className="p-2 rounded-lg hover:opacity-70 text-ink transition-transform duration-150 hover:scale-110 active:scale-90">
-                          <Receipt size={17} />
-                        </button>
-                        <button title="Enviar bienvenida por WhatsApp"
-                          onClick={() => abrirWhatsapp(s.telefono, aplicarPlantilla(plantillas.bienvenida, s))}
-                          className="p-2 rounded-lg hover:opacity-70 text-good transition-transform duration-150 hover:scale-110 active:scale-90">
-                          <MessageCircle size={17} />
-                        </button>
-                        <button title="Enviar recordatorio de pago"
-                          onClick={() => abrirWhatsapp(s.telefono, aplicarPlantilla(plantillas.recordatorio, s))}
-                          className="p-2 rounded-lg hover:opacity-70 text-warn transition-transform duration-150 hover:scale-110 active:scale-90">
-                          <CalendarClock size={17} />
-                        </button>
-                        <button title="Avisar que el plan ya venció"
-                          onClick={() => abrirWhatsapp(s.telefono, aplicarPlantilla(plantillas.vencido, s))}
-                          className="p-2 rounded-lg hover:opacity-70 text-bad transition-transform duration-150 hover:scale-110 active:scale-90">
-                          <BellOff size={17} />
-                        </button>
-                        <button title="Editar" onClick={() => { setEditando(s); setModalAbierto(true); }}
-                          className="p-2 rounded-lg hover:opacity-70 text-inksoft transition-transform duration-150 hover:scale-110 active:scale-90">
-                          <Pencil size={16} />
-                        </button>
-                        <button title="Eliminar" onClick={() => setEliminando(s)}
-                          className="p-2 rounded-lg hover:opacity-70 text-bad transition-transform duration-150 hover:scale-110 active:scale-90">
-                          <Trash2 size={16} />
-                        </button>
+                        {puede(usuario, "socios", "renovar") && (
+                          <button title="Renovar membresía"
+                            onClick={() => setRenovando(s)}
+                            className="p-2 rounded-lg hover:opacity-70 text-gold transition-transform duration-150 hover:scale-110 active:scale-90">
+                            <RefreshCw size={17} />
+                          </button>
+                        )}
+                        {puede(usuario, "socios", "medir") && (
+                          <button title="Medidas corporales"
+                            onClick={() => setMidiendo(s)}
+                            className="p-2 rounded-lg hover:opacity-70 text-ink transition-transform duration-150 hover:scale-110 active:scale-90">
+                            <Ruler size={17} />
+                          </button>
+                        )}
+                        {puede(usuario, "socios", "historial") && (
+                          <button title="Historial de pagos"
+                            onClick={() => setVerHistorial(s)}
+                            className="p-2 rounded-lg hover:opacity-70 text-inksoft transition-transform duration-150 hover:scale-110 active:scale-90">
+                            <History size={17} />
+                          </button>
+                        )}
+                        {puede(usuario, "socios", "comprobante") && (
+                          <button title="Comprobante de pago (reimprime el último, o genera el primero)"
+                            onClick={() => { prepararVentanaWhatsapp(); reimprimirOGenerarComprobante(s); }}
+                            className="p-2 rounded-lg hover:opacity-70 text-ink transition-transform duration-150 hover:scale-110 active:scale-90">
+                            <Receipt size={17} />
+                          </button>
+                        )}
+                        {puede(usuario, "socios", "bienvenida") && (
+                          <button title="Enviar bienvenida por WhatsApp"
+                            onClick={() => abrirWhatsapp(s.telefono, aplicarPlantilla(plantillas.bienvenida, s))}
+                            className="p-2 rounded-lg hover:opacity-70 text-good transition-transform duration-150 hover:scale-110 active:scale-90">
+                            <MessageCircle size={17} />
+                          </button>
+                        )}
+                        {puede(usuario, "socios", "recordatorio_proximo") && (
+                          <button title="Enviar recordatorio de pago"
+                            onClick={() => abrirWhatsapp(s.telefono, aplicarPlantilla(plantillas.recordatorio, s))}
+                            className="p-2 rounded-lg hover:opacity-70 text-warn transition-transform duration-150 hover:scale-110 active:scale-90">
+                            <CalendarClock size={17} />
+                          </button>
+                        )}
+                        {puede(usuario, "socios", "recordatorio_vencido") && (
+                          <button title="Avisar que el plan ya venció"
+                            onClick={() => abrirWhatsapp(s.telefono, aplicarPlantilla(plantillas.vencido, s))}
+                            className="p-2 rounded-lg hover:opacity-70 text-bad transition-transform duration-150 hover:scale-110 active:scale-90">
+                            <BellOff size={17} />
+                          </button>
+                        )}
+                        {puede(usuario, "socios", "editar") && (
+                          <button title="Editar" onClick={() => { setEditando(s); setModalAbierto(true); }}
+                            className="p-2 rounded-lg hover:opacity-70 text-inksoft transition-transform duration-150 hover:scale-110 active:scale-90">
+                            <Pencil size={16} />
+                          </button>
+                        )}
+                        {puede(usuario, "socios", "eliminar") && (
+                          <button title="Eliminar" onClick={() => setEliminando(s)}
+                            className="p-2 rounded-lg hover:opacity-70 text-bad transition-transform duration-150 hover:scale-110 active:scale-90">
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -281,6 +331,7 @@ export default function Socios() {
         <SocioModal
           socio={editando}
           cuotaInscripcion={cuotaInscripcion}
+          precios={precios}
           onClose={() => { setModalAbierto(false); setEditando(null); }}
           onSave={guardar}
         />
@@ -289,6 +340,7 @@ export default function Socios() {
       {renovando && (
         <RenovarModal
           socio={renovando}
+          precios={precios}
           onClose={() => setRenovando(null)}
           onRenovar={confirmarRenovacion}
         />

@@ -10,8 +10,10 @@ from app.core.config import settings
 BREVO_URL = "https://api.brevo.com/v3/smtp/email"
 
 
-def enviar_correo(destinatario_email: str, destinatario_nombre: str, asunto: str, html: str) -> bool:
-    """Devuelve True si Brevo aceptó el envío, False si algo falló."""
+def enviar_correo(destinatario_email: str, destinatario_nombre: str, asunto: str, html: str,
+                   adjuntos: list[dict] | None = None) -> bool:
+    """Devuelve True si Brevo aceptó el envío, False si algo falló.
+    adjuntos (opcional): lista de {"name": "archivo.pdf", "content": "<base64>"}."""
     if not settings.BREVO_API_KEY or not settings.BREVO_REMITENTE_EMAIL:
         raise ValueError(
             "Todavía no configuraste BREVO_API_KEY / BREVO_REMITENTE_EMAIL en el archivo .env del backend."
@@ -23,6 +25,9 @@ def enviar_correo(destinatario_email: str, destinatario_nombre: str, asunto: str
         "subject": asunto,
         "htmlContent": html,
     }
+    if adjuntos:
+        payload["attachment"] = adjuntos
+
     headers = {
         "api-key": settings.BREVO_API_KEY,
         "Content-Type": "application/json",

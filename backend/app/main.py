@@ -8,8 +8,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.api.routers import socios, mediciones, comprobantes, auth, usuarios, caja, backup, inventario, recordatorios, planes, ejercicios, contabilidad, actividad, configuracion
 from database.database import SessionLocal
-from database.models import Usuario
-from app.core.security import hash_password
 from app.services import recordatorios_service, backup_service
 
 app = FastAPI(title="Sistema de Control - Gimnasio")
@@ -36,26 +34,6 @@ app.include_router(ejercicios.router, prefix="/api/ejercicios", tags=["Ejercicio
 app.include_router(contabilidad.router, prefix="/api/contabilidad", tags=["Contabilidad"])
 app.include_router(actividad.router, prefix="/api/actividad", tags=["Actividad"])
 app.include_router(configuracion.router, prefix="/api/configuracion", tags=["Configuración"])
-
-
-@app.on_event("startup")
-def crear_admin_inicial():
-    db = SessionLocal()
-    try:
-        existe_admin = db.query(Usuario).filter(Usuario.es_admin == True).first()
-        if not existe_admin:
-            admin = Usuario(
-                nombre="Administrador",
-                usuario="admin",
-                password_hash=hash_password("admin123"),
-                es_admin=True,
-                activo=True,
-            )
-            db.add(admin)
-            db.commit()
-            print("*** Usuario admin creado -> usuario: admin / contraseña: admin123 ***")
-    finally:
-        db.close()
 
 
 @app.get("/")

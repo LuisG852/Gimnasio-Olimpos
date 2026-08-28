@@ -7,6 +7,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
   const [cargando, setCargando] = useState(true);
+  const [necesitaConfiguracion, setNecesitaConfiguracion] = useState(false);
 
   useEffect(() => {
     const guardado = localStorage.getItem("gimnasio_usuario");
@@ -14,7 +15,11 @@ export function AuthProvider({ children }) {
     if (guardado && token) {
       setUsuario(JSON.parse(guardado));
     }
-    setCargando(false);
+
+    api.get("/auth/necesita-configuracion-inicial")
+      .then(({ data }) => setNecesitaConfiguracion(data.necesita_configuracion))
+      .catch(() => setNecesitaConfiguracion(false)) // si esto falla, mejor no bloquear la app con la pantalla de configuración
+      .finally(() => setCargando(false));
   }, []);
 
   const login = async (usuarioInput, password) => {
@@ -24,6 +29,14 @@ export function AuthProvider({ children }) {
     setUsuario(res.data.usuario);
   };
 
+  const configurarInicial = async (nombre, usuarioInput, password) => {
+    const res = await api.post("/auth/configuracion-inicial", { nombre, usuario: usuarioInput, password });
+    localStorage.setItem("gimnasio_token", res.data.access_token);
+    localStorage.setItem("gimnasio_usuario", JSON.stringify(res.data.usuario));
+    setUsuario(res.data.usuario);
+    setNecesitaConfiguracion(false);
+  };
+
   const logout = () => {
     localStorage.removeItem("gimnasio_token");
     localStorage.removeItem("gimnasio_usuario");
@@ -31,7 +44,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ usuario, login, logout, cargando }}>
+    <AuthContext.Provider value={{ usuario, login, logout, cargando, necesitaConfiguracion, configurarInicial }}>
       {children}
     </AuthContext.Provider>
   );

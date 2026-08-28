@@ -1,6 +1,6 @@
 """
-Endpoint manual para probar el envío de recordatorios sin esperar al
-scheduler automático. Útil para probar que Brevo está bien configurado.
+Endpoint manual para enviar recordatorios sin esperar al scheduler
+automático — es la acción "enviar_recordatorios" del módulo Mensajes.
 """
 
 from fastapi import APIRouter, Depends
@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db
 from app.services import recordatorios_service
-from app.api.deps import get_admin_actual
+from app.api.deps import requiere_permiso
 
-router = APIRouter(dependencies=[Depends(get_admin_actual)])
+router = APIRouter(dependencies=[Depends(requiere_permiso("mensajes", "enviar_recordatorios"))])
 
 
 @router.post("/enviar-ahora")

@@ -1,11 +1,12 @@
 import React from "react";
 import { useEffect, useState, useRef } from "react";
-import { UserPlus, Pencil, Trash2, X, DatabaseBackup, UploadCloud, Coins } from "lucide-react";
+import { UserPlus, Pencil, Trash2, X, DatabaseBackup, UploadCloud, Coins, Tag } from "lucide-react";
 import { usuarioService, backupService, configuracionService } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import ConfirmModal from "../components/ConfirmModal";
 import AvisoModal from "../components/AvisoModal";
 import RestaurarBackupModal from "../components/RestaurarBackupModal";
+import PermisosForm from "../components/PermisosForm";
 
 const FORM_VACIO = { nombre: "", usuario: "", password: "", password_admin_actual: "", es_admin: false, activo: true };
 
@@ -13,6 +14,8 @@ export default function Usuarios() {
   const { logout } = useAuth();
   const [usuarios, setUsuarios] = useState([]);
   const [form, setForm] = useState(FORM_VACIO);
+  const [permisosForm, setPermisosForm] = useState({});
+  const [modulosDisponibles, setModulosDisponibles] = useState({});
   const [editandoId, setEditandoId] = useState(null);
   const [error, setError] = useState("");
   const [eliminando, setEliminando] = useState(null);
@@ -26,13 +29,33 @@ export default function Usuarios() {
   const [estadoBackup, setEstadoBackup] = useState(null);
   const [cuotaInscripcion, setCuotaInscripcion] = useState("");
   const [guardandoCuota, setGuardandoCuota] = useState(false);
+  const [preciosForm, setPreciosForm] = useState({
+    precio_mensual: "", descuento_trimestral: "", descuento_semestral: "", descuento_anual: "",
+  });
+  const [preciosCalculados, setPreciosCalculados] = useState(null);
+  const [guardandoPrecios, setGuardandoPrecios] = useState(false);
   const inputArchivoRef = useRef(null);
+
+  useEffect(() => {
+    usuarioService.modulosPermisos().then(({ data }) => setModulosDisponibles(data));
+  }, []);
 
   const cargar = () => usuarioService.listar().then((res) => setUsuarios(res.data));
   useEffect(() => { cargar(); }, []);
   useEffect(() => { backupService.estado().then(({ data }) => setEstadoBackup(data)).catch(() => {}); }, []);
   useEffect(() => {
     configuracionService.obtenerCuotaInscripcion().then(({ data }) => setCuotaInscripcion(String(data.cuota_inscripcion)));
+  }, []);
+  useEffect(() => {
+    configuracionService.obtenerPreciosMembresia().then(({ data }) => {
+      setPreciosForm({
+        precio_mensual: String(data.precio_mensual),
+        descuento_trimestral: String(data.descuento_trimestral),
+        descuento_semestral: String(data.descuento_semestral),
+        descuento_anual: String(data.descuento_anual),
+      });
+      setPreciosCalculados(data.precios);
+    });
   }, []);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -58,28 +81,59 @@ export default function Usuarios() {
     }
   };
 
+  const guardarPreciosMembresia = async () => {
+    const datos = {
+      precio_mensual: Number(preciosForm.precio_mensual),
+      descuento_trimestral: Number(preciosForm.descuento_trimestral),
+      descuento_semestral: Number(preciosForm.descuento_semestral),
+      descuento_anual: Number(preciosForm.descuento_anual),
+    };
+    if (Object.values(datos).some((v) => Number.isNaN(v) || v < 0)) {
+      setAviso({ titulo: "Valores inválidos", tipo: "advertencia", mensaje: "Revisá que todos los campos sean números de 0 o más." });
+      return;
+    }
+    setGuardandoPrecios(true);
+    try {
+      const { data } = await configuracionService.actualizarPreciosMembresia(datos);
+      setPreciosCalculados(data.precios);
+      setAviso({ titulo: "Guardado", tipo: "exito", mensaje: "Los precios de las membresías se actualizaron." });
+    } catch (error) {
+      setAviso({
+        titulo: "No se pudo guardar",
+        tipo: "advertencia",
+        mensaje: error?.response?.data?.detail || "No se pudieron actualizar los precios.",
+      });
+    } finally {
+      setGuardandoPrecios(false);
+    }
+  };
+
   const empezarEdicion = (u) => {
     setEditandoId(u.id);
     setForm({ nombre: u.nombre, usuario: u.usuario, password: "", password_admin_actual: "", es_admin: u.es_admin, activo: u.activo });
+    setPermisosForm(u.permisos || {});
     setError("");
   };
 
   const cancelarEdicion = () => {
     setEditandoId(null);
     setForm(FORM_VACIO);
+    setPermisosForm({});
     setError("");
   };
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    const payload = { ...form, permisos: permisosForm };
     try {
       if (editandoId) {
-        await usuarioService.actualizar(editandoId, form);
+        await usuarioService.actualizar(editandoId, payload);
       } else {
-        await usuarioService.crear(form);
+        await usuarioService.crear(payload);
       }
       setForm(FORM_VACIO);
+      setPermisosForm({});
       setEditandoId(null);
       cargar();
     } catch (err) {
@@ -174,7 +228,8 @@ export default function Usuarios() {
   };
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      <div className="space-y-6">
       <div className="rounded-xl p-5 bg-panel border border-line flex items-center justify-between">
         <div>
           <h3 className="font-display text-lg text-ink flex items-center gap-2">
@@ -270,6 +325,57 @@ export default function Usuarios() {
         </div>
       </div>
 
+      <div className="rounded-xl p-5 bg-panel border border-line space-y-3">
+        <div>
+          <h3 className="font-display text-lg text-ink flex items-center gap-2">
+            <Tag size={18} className="text-accent" /> Precios de membresías
+          </h3>
+          <p className="text-xs text-inksoft mt-1">
+            Trimestral, Semestral y Anual se calculan solos a partir de la mensualidad y el % de
+            descuento que le pongas a cada uno — no hay que definir cada precio por separado.
+          </p>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-inksoft">Mensualidad (Q)</label>
+          <input
+            type="number" min="0" step="0.01"
+            value={preciosForm.precio_mensual}
+            onChange={(e) => setPreciosForm((f) => ({ ...f, precio_mensual: e.target.value }))}
+            className="w-32 mt-1 px-3 py-2 rounded-lg outline-none border border-line"
+          />
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { clave: "descuento_trimestral", label: "Descuento Trimestral (%)", plan: "Trimestral" },
+            { clave: "descuento_semestral", label: "Descuento Semestral (%)", plan: "Semestral" },
+            { clave: "descuento_anual", label: "Descuento Anual (%)", plan: "Anual" },
+          ].map(({ clave, label, plan }) => (
+            <div key={clave}>
+              <label className="text-xs font-semibold text-inksoft">{label}</label>
+              <input
+                type="number" min="0" max="100" step="0.01"
+                value={preciosForm[clave]}
+                onChange={(e) => setPreciosForm((f) => ({ ...f, [clave]: e.target.value }))}
+                className="w-full mt-1 px-3 py-2 rounded-lg outline-none border border-line"
+              />
+              {preciosCalculados && (
+                <p className="text-xs text-inksoft mt-1">Queda en Q{preciosCalculados[plan]}</p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={guardarPreciosMembresia}
+          disabled={guardandoPrecios}
+          className="px-4 py-2.5 rounded-lg font-semibold bg-accent text-accentink transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-60"
+        >
+          {guardandoPrecios ? "Guardando..." : "Guardar precios"}
+        </button>
+      </div>
+
       <div className="rounded-xl p-5 bg-badbg border border-bad space-y-3">
         <div>
           <h3 className="font-display text-lg text-bad flex items-center gap-2">
@@ -296,7 +402,9 @@ export default function Usuarios() {
           Restaurar desde archivo...
         </button>
       </div>
+      </div>
 
+      <div className="space-y-6">
       <form onSubmit={submit} className="rounded-xl p-5 bg-panel border border-line space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-display text-xl text-ink flex items-center gap-2">
@@ -355,6 +463,15 @@ export default function Usuarios() {
           )}
         </div>
 
+        {!form.es_admin && (
+          <div>
+            <label className="text-xs font-semibold text-inksoft mb-2 block">
+              Qué puede ver y hacer este usuario
+            </label>
+            <PermisosForm modulos={modulosDisponibles} permisos={permisosForm} onChange={setPermisosForm} />
+          </div>
+        )}
+
         {error && <div className="rounded-lg p-2.5 text-sm bg-badbg text-bad">{error}</div>}
 
         <button type="submit"
@@ -394,6 +511,7 @@ export default function Usuarios() {
             ))}
           </tbody>
         </table>
+      </div>
       </div>
 
       {eliminando && (

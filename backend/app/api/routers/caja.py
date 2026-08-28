@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 from database.database import get_db
 from app.schemas.caja import AperturaCreate, GastoCreate, IngresoCreate, ResumenCajaOut, CierreResumenOut
 from app.services import caja_service
-from app.api.deps import get_usuario_actual, get_admin_actual
+from app.api.deps import get_usuario_actual, get_admin_actual, requiere_permiso
 
-router = APIRouter(dependencies=[Depends(get_usuario_actual)])
+router = APIRouter(dependencies=[Depends(requiere_permiso("caja"))])
 
 
 @router.get("/resumen", response_model=ResumenCajaOut)
@@ -20,7 +20,7 @@ def resumen(fecha: date = Query(default_factory=date.today), db: Session = Depen
     return caja_service.resumen_dia(db, fecha)
 
 
-@router.get("/historial", response_model=list[CierreResumenOut])
+@router.get("/historial", response_model=list[CierreResumenOut], dependencies=[Depends(requiere_permiso("caja", "ver_anteriores"))])
 def historial(db: Session = Depends(get_db)):
     return caja_service.historial_cierres(db)
 
@@ -34,7 +34,7 @@ def apertura(datos: AperturaCreate, db: Session = Depends(get_db), usuario=Depen
     return caja_service.resumen_dia(db, date.today())
 
 
-@router.post("/gasto", response_model=ResumenCajaOut)
+@router.post("/gasto", response_model=ResumenCajaOut, dependencies=[Depends(requiere_permiso("caja", "gasto"))])
 def gasto(datos: GastoCreate, db: Session = Depends(get_db), usuario=Depends(get_usuario_actual)):
     try:
         caja_service.crear_gasto(db, date.today(), datos, usuario.id)
@@ -43,7 +43,7 @@ def gasto(datos: GastoCreate, db: Session = Depends(get_db), usuario=Depends(get
     return caja_service.resumen_dia(db, date.today())
 
 
-@router.post("/ingreso")
+@router.post("/ingreso", dependencies=[Depends(requiere_permiso("caja", "ingreso"))])
 def ingreso(datos: IngresoCreate, db: Session = Depends(get_db), usuario=Depends(get_usuario_actual)):
     try:
         caja_service.crear_ingreso(db, date.today(), datos, usuario.id)
@@ -52,7 +52,7 @@ def ingreso(datos: IngresoCreate, db: Session = Depends(get_db), usuario=Depends
     return {"mensaje": "Ingreso registrado"}
 
 
-@router.post("/cierre", response_model=ResumenCajaOut)
+@router.post("/cierre", response_model=ResumenCajaOut, dependencies=[Depends(requiere_permiso("caja", "cerrar"))])
 def cierre(db: Session = Depends(get_db), usuario=Depends(get_usuario_actual)):
     try:
         return caja_service.cerrar_caja(db, date.today(), usuario.id)

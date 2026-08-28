@@ -1,8 +1,11 @@
 """
 Lógica de negocio de Comprobantes: crear el registro, generar su PDF,
-y calcular estadísticas de ingresos.
+calcular estadísticas de ingresos, y mandar la bienvenida por correo
+(con el comprobante adjunto) cuando el socio nuevo tiene correo
+registrado.
 """
 
+import base64
 import io
 import os
 from datetime import date
@@ -14,6 +17,8 @@ from reportlab.lib.colors import HexColor, white
 from reportlab.pdfgen import canvas
 
 from database.models import Comprobante, Socio, MovimientoCaja
+from app.core.config import settings
+from app.services import email_service
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "static", "olimpos-logo.png")
 
@@ -175,3 +180,77 @@ def generar_pdf(comprobante: Comprobante) -> bytes:
     c.save()
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def _plantilla_bienvenida(socio: Socio) -> str:
+    logo_html = (
+        f'<img src="{settings.GYM_LOGO_URL}" width="72" height="72" '
+        f'style="display:block; margin: 0 auto 12px;" alt="{settings.GYM_NOMBRE}" />'
+        if settings.GYM_LOGO_URL else ""
+    )
+    return f"""
+    <div style="font-family: Arial, sans-serif; max-width: 420px; margin: 0 auto; background:#F4FBF7; padding: 24px 0;">
+      <div style="background:#FFFFFF; border-radius: 16px; overflow:hidden; border: 1px solid #D7E6F0;">
+        <div style="background:#003F7D; padding: 24px; text-align:center;">
+          {logo_html}
+          <h1 style="color:#FFD600; font-size: 20px; margin: 0; letter-spacing: 1px;">{settings.GYM_NOMBRE.upper()}</h1>
+        </div>
+        <div style="padding: 24px;">
+          <p style="color:#003F7D; font-size: 16px; margin: 0 0 16px;">¡Bienvenido, <b>{socio.nombre}</b>! 🎉</p>
+          <p style="color:#4A6E93; font-size: 14px; line-height: 1.5; margin: 0 0 20px;">
+            Ya sos parte de {settings.GYM_NOMBRE}. Te dejamos adjunto el comprobante de tu inscripción
+            para que lo tengas a mano.
+          </p>
+
+          <table style="width:100%; border-collapse: collapse; margin-bottom: 20px;">
+            <tr>
+              <td style="padding: 10px 0; border-bottom: 1px solid #D7E6F0; color:#4A6E93; font-size: 13px;">Membresía</td>
+              <td style="padding: 10px 0; border-bottom: 1px solid #D7E6F0; color:#003F7D; font-size: 13px; text-align:right; font-weight:bold;">{socio.tipo_membresia}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; color:#4A6E93; font-size: 13px;">Próximo vencimiento</td>
+              <td style="padding: 10px 0; color:#003F7D; font-size: 13px; text-align:right; font-weight:bold;">{socio.fecha_vencimiento.strftime('%d/%m/%Y')}</td>
+            </tr>
+          </table>
+
+          <p style="color:#4A6E93; font-size: 14px; line-height: 1.5; margin: 0;">
+            ¡Nos vemos pronto en el gimnasio!
+          </p>
+        </div>
+        <div style="background:#F4FBF7; padding: 14px; text-align:center;">
+          <p style="color:#4A6E93; font-size: 11px; margin: 0;">Este es un correo automático, no hace falta que lo respondas.</p>
+        </div>
+      </div>
+    </div>
+    """
+
+
+def enviar_bienvenida_por_correo(db: Session, socio_id: int) -> dict:
+    """Se usa al registrar un socio nuevo, solo cuando tiene correo
+    registrado (si no tiene, el frontend sigue mandando la bienvenida
+    por WhatsApp como hasta ahora). Adjunta el comprobante en PDF si ya
+    existe uno para este socio."""
+    socio = db.query(Socio).filter(Socio.id == socio_id).first()
+    if not socio:
+        return {"ok": False, "error": "Socio no encontrado."}
+    if not socio.correo:
+        return {"ok": False, "error": "Este socio no tiene correo registrado."}
+
+    adjuntos = None
+    comprobante = obtener_ultimo_por_socio(db, socio_id)
+    if comprobante:
+        pdf_bytes = generar_pdf(comprobante)
+        adjuntos = [{
+            "name": f"comprobante_{comprobante.id:06d}.pdf",
+            "content": base64.b64encode(pdf_bytes).decode("utf-8"),
+        }]
+
+    asunto = f"¡Bienvenido a {settings.GYM_NOMBRE}!"
+    html = _plantilla_bienvenida(socio)
+
+    try:
+        ok = email_service.enviar_correo(socio.correo, f"{socio.nombre} {socio.apellido}", asunto, html, adjuntos=adjuntos)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+
+    return {"ok": ok, "error": None if ok else "Brevo rechazó el envío."}

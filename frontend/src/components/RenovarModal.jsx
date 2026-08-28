@@ -4,7 +4,9 @@ import { X, RefreshCw } from "lucide-react";
 import { prepararVentanaWhatsapp } from "../utils/whatsapp";
 
 const TIPOS_MEMBRESIA = ["Mensual", "Trimestral", "Semestral", "Anual", "Personalizado"];
-const PRECIOS_DEFAULT = { Mensual: 200, Trimestral: 550, Semestral: 1100, Anual: 1920, Personalizado: 0 };
+// Respaldo, solo por si el modal se abre antes de que terminen de cargar
+// los precios reales desde Usuarios — en la práctica casi nunca se usa.
+const PRECIOS_RESPALDO = { Mensual: 200, Trimestral: 550, Semestral: 1100, Anual: 1920, Personalizado: 0 };
 const DURACIONES_DIAS = { Mensual: 30, Trimestral: 91, Semestral: 182, Anual: 365 };
 
 function calcularNuevaFecha(fechaVencimientoActual, dias) {
@@ -17,10 +19,15 @@ function calcularNuevaFecha(fechaVencimientoActual, dias) {
   return nueva.toISOString().slice(0, 10);
 }
 
-export default function RenovarModal({ socio, onClose, onRenovar }) {
+export default function RenovarModal({ socio, precios, onClose, onRenovar }) {
+  const preciosActuales = precios && Object.keys(precios).length ? precios : PRECIOS_RESPALDO;
   const planActualEsEstandar = ["Mensual", "Trimestral", "Semestral", "Anual"].includes(socio.tipo_membresia);
   const [tipo, setTipo] = useState(planActualEsEstandar ? socio.tipo_membresia : "Mensual");
-  const [precio, setPrecio] = useState(planActualEsEstandar ? Number(socio.precio) : PRECIOS_DEFAULT.Mensual);
+  // Ojo: el precio inicial debe ser el precio VIGENTE de ese plan hoy
+  // (preciosActuales), no lo que ese socio pagó la última vez
+  // (socio.precio) — si no, al abrir "Renovar" seguía mostrando
+  // precios viejos hasta que tocabas el selector de tipo de membresía.
+  const [precio, setPrecio] = useState(planActualEsEstandar ? preciosActuales[socio.tipo_membresia] : preciosActuales.Mensual);
   const [nombrePersonalizado, setNombrePersonalizado] = useState("");
   const [diasPersonalizados, setDiasPersonalizados] = useState(30);
   const [metodoPago, setMetodoPago] = useState("efectivo");
@@ -70,7 +77,7 @@ export default function RenovarModal({ socio, onClose, onRenovar }) {
               onChange={(e) => {
                 const nuevoTipo = e.target.value;
                 setTipo(nuevoTipo);
-                if (nuevoTipo !== "Personalizado") setPrecio(PRECIOS_DEFAULT[nuevoTipo]);
+                if (nuevoTipo !== "Personalizado") setPrecio(preciosActuales[nuevoTipo]);
               }}
               className="w-full mt-1 px-3 py-2 rounded-lg outline-none border border-line"
             >

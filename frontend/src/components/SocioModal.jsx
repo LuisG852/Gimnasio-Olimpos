@@ -5,7 +5,9 @@ import { prepararVentanaWhatsapp } from "../utils/whatsapp";
 import TelefonoInput from "./TelefonoInput";
 
 const TIPOS_MEMBRESIA = ["Mensual", "Trimestral", "Semestral", "Anual", "Personalizado"];
-const PRECIOS_DEFAULT = { Mensual: 200, Trimestral: 550, Semestral: 1100, Anual: 1920, Personalizado: 0 };
+// Respaldo, solo por si el modal se abre antes de que terminen de cargar
+// los precios reales desde Usuarios — en la práctica casi nunca se usa.
+const PRECIOS_RESPALDO = { Mensual: 200, Trimestral: 550, Semestral: 1100, Anual: 1920, Personalizado: 0 };
 // Mismos valores que DURACIONES_DIAS en backend/app/services/socio_service.py
 // (91 y 182, no 90/180 exactos) — así un plan dura lo mismo sin importar
 // si es una inscripción nueva o una renovación.
@@ -26,14 +28,15 @@ function sumarDias(fechaISO, dias) {
   return `${y}-${m}-${d}`;
 }
 
-export default function SocioModal({ socio, cuotaInscripcion = 0, onClose, onSave }) {
+export default function SocioModal({ socio, cuotaInscripcion = 0, precios, onClose, onSave }) {
+  const preciosActuales = precios && Object.keys(precios).length ? precios : PRECIOS_RESPALDO;
   const [form, setForm] = useState(
     socio || {
       nombre: "", apellido: "", telefono: "", correo: "",
       fecha_inscripcion: new Date().toISOString().slice(0, 10),
       fecha_nacimiento: "",
       tipo_membresia: "Mensual",
-      precio: PRECIOS_DEFAULT.Mensual,
+      precio: preciosActuales.Mensual,
       fecha_vencimiento: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
       activo: true,
       metodo_pago: "efectivo",
@@ -47,10 +50,12 @@ export default function SocioModal({ socio, cuotaInscripcion = 0, onClose, onSav
   const submit = (e) => {
     e.preventDefault();
     if (!form.nombre || !form.apellido || !form.telefono) return;
-    // Solo un socio NUEVO dispara el mensaje de bienvenida por WhatsApp
-    // (a uno editado no se le manda nada) — se abre la pestaña vacía en
-    // este mismo instante del clic, antes de que empiece a guardar.
-    if (!socio) prepararVentanaWhatsapp();
+    // Si el socio nuevo NO tiene correo, la bienvenida se manda por
+    // WhatsApp — se abre la pestaña vacía en este mismo instante del
+    // clic (antes de guardar), para que el navegador no la bloquee
+    // como popup. Si SÍ tiene correo, la bienvenida va por correo con
+    // el comprobante adjunto, y no hace falta abrir nada acá.
+    if (!socio && !form.correo) prepararVentanaWhatsapp();
     onSave({ ...form, fecha_nacimiento: form.fecha_nacimiento || null });
   };
 
@@ -102,7 +107,7 @@ export default function SocioModal({ socio, cuotaInscripcion = 0, onClose, onSav
                     setForm((f) => ({
                       ...f,
                       tipo_membresia: valor,
-                      precio: PRECIOS_DEFAULT[valor],
+                      precio: preciosActuales[valor],
                       fecha_vencimiento: sumarDias(f.fecha_inscripcion, DIAS_DEFAULT[valor]),
                     }));
                   }

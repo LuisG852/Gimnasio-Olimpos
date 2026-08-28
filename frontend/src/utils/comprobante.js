@@ -1,14 +1,11 @@
 /**
- * Genera / reimprime comprobantes de pago: descarga el PDF y abre
- * WhatsApp con la plantilla configurada en "Mensajes" (el PDF hay que
- * adjuntarlo a mano en esa conversación, WhatsApp no permite adjuntar
- * archivos automáticamente desde un link).
+ * Genera / reimprime comprobantes de pago y descarga el PDF.
  */
 
 import { comprobanteService } from "../services/api";
 import { abrirWhatsapp, obtenerPlantillas, aplicarPlantilla } from "./whatsapp";
 
-async function descargarYAvisar(comprobanteId, socio) {
+async function descargarPdf(comprobanteId) {
   const { data: pdfBlob } = await comprobanteService.descargarPdf(comprobanteId);
   const blob = new Blob([pdfBlob], { type: "application/pdf" });
   const url = window.URL.createObjectURL(blob);
@@ -19,26 +16,38 @@ async function descargarYAvisar(comprobanteId, socio) {
   a.click();
   a.remove();
   window.URL.revokeObjectURL(url);
-
-  const plantillas = obtenerPlantillas();
-  abrirWhatsapp(socio.telefono, aplicarPlantilla(plantillas.comprobante, socio));
 }
 
 export async function generarNuevoComprobante(socio) {
   const { data: comprobante } = await comprobanteService.crear(socio.id);
-  await descargarYAvisar(comprobante.id, socio);
+  await descargarPdf(comprobante.id);
+  // Si el socio tiene correo, el comprobante ya se le mandó adjunto en
+  // el correo de bienvenida — no hace falta también abrir WhatsApp acá.
+  // Si no tiene correo, sí se abre WhatsApp, para poder mandárselo por
+  // celular igual (como funcionaba antes).
+  if (!socio.correo) {
+    const plantillas = obtenerPlantillas();
+    abrirWhatsapp(socio.telefono, aplicarPlantilla(plantillas.comprobante, socio));
+  }
 }
 
 export async function reimprimirOGenerarComprobante(socio) {
+  let comprobanteId;
   try {
     const { data: ultimo } = await comprobanteService.ultimoPorSocio(socio.id);
-    await descargarYAvisar(ultimo.id, socio);
+    comprobanteId = ultimo.id;
   } catch (error) {
     if (error?.response?.status === 404) {
       const { data: comprobante } = await comprobanteService.crear(socio.id);
-      await descargarYAvisar(comprobante.id, socio);
+      comprobanteId = comprobante.id;
     } else {
       throw error;
     }
   }
+  await descargarPdf(comprobanteId);
+  // Este botón es una acción manual explícita — siempre abre WhatsApp,
+  // tenga o no correo el socio, a diferencia del envío automático al
+  // registrar (generarNuevoComprobante, arriba).
+  const plantillas = obtenerPlantillas();
+  abrirWhatsapp(socio.telefono, aplicarPlantilla(plantillas.comprobante, socio));
 }
