@@ -370,7 +370,7 @@ Write-Host "Archivo .env creado."
 # ------------------------------------------------------------
 # 8) Migraciones + acceso directo
 # ------------------------------------------------------------
-Titulo "Paso 8 de 8 - Tablas y acceso directo"
+Titulo "Paso 8 de 8 - Tablas, ejercicios y acceso directo"
 
 $database = Join-Path $destino "database"
 $alembicExe = Join-Path $backend "venv\Scripts\alembic.exe"
@@ -397,6 +397,30 @@ finally {
 }
 
 Write-Host "Migraciones completadas correctamente."
+
+Write-Host "Cargando la biblioteca de ejercicios (esto baja datos de internet, puede tardar un minuto)..."
+$seedScript = Join-Path $database "seed_ejercicios.py"
+
+if (Test-Path $seedScript) {
+    try {
+        & $venvPython $seedScript
+        if ($LASTEXITCODE -ne 0) {
+            throw "seed_ejercicios.py terminó con un error (código $LASTEXITCODE)"
+        }
+        Write-Host "Biblioteca de ejercicios cargada."
+    }
+    catch {
+        Write-Host ""
+        Write-Host "Aviso: no se pudo cargar la biblioteca de ejercicios automáticamente ($($_.Exception.Message))." -ForegroundColor Yellow
+        Write-Host "Probablemente por falta de conexión a internet en este momento." -ForegroundColor Yellow
+        Write-Host "El sistema va a funcionar igual; podés cargarla más tarde corriendo:" -ForegroundColor Yellow
+        Write-Host "  `"$venvPython`" `"$seedScript`"" -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
+else {
+    Write-Host "Aviso: no se encontró seed_ejercicios.py, se omite la carga de ejercicios." -ForegroundColor Yellow
+}
 
 Write-Host "Creando el acceso directo del escritorio..."
 $escritorio = [Environment]::GetFolderPath('Desktop')
