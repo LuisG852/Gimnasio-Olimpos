@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $raiz = "D:\OLIMPO´S\gimnasio-sistema"
 $escritorio = [Environment]::GetFolderPath('Desktop')
