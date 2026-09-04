@@ -124,6 +124,22 @@ export default function Socios() {
     cargar();
     if (socio) {
       await generarNuevoComprobante(socio);
+      // Igual que al registrar un socio nuevo (más arriba en este archivo):
+      // si tiene correo, el comprobante se le manda por correo adjunto en
+      // vez de solo quedar descargado acá. generarNuevoComprobante() ya
+      // se encarga de WhatsApp cuando NO tiene correo — esto cubre el
+      // caso contrario, que antes no mandaba nada.
+      if (socio.correo) {
+        try {
+          await comprobanteService.enviarComprobanteCorreo(socio.id);
+        } catch (errorCorreo) {
+          setAviso({
+            titulo: "Membresía renovada",
+            tipo: "advertencia",
+            mensaje: "La renovación se guardó bien, pero no se pudo enviar el comprobante por correo. Podés reenviarlo luego desde Mensajes.",
+          });
+        }
+      }
       try {
         await cajaService.ingreso(
           `Renovación - ${socio.nombre} ${socio.apellido}`,

@@ -1,24 +1,45 @@
 import React from "react";
 import { useEffect, useState } from "react";
-import { MessageCircle, CalendarClock, Receipt, BellOff, Mail } from "lucide-react";
+import { MessageCircle, CalendarClock, Receipt, BellOff, Mail, Send } from "lucide-react";
 import { obtenerPlantillas, guardarPlantillas } from "../utils/whatsapp";
-import { recordatoriosService, socioService } from "../services/api";
+import { recordatoriosService, socioService, plantillaCorreoService } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { puede } from "../utils/permisos";
 
-const SECCIONES = [
+const SECCIONES_WHATSAPP = [
   { id: "bienvenida", label: "Bienvenida", icon: MessageCircle, variables: "{nombre}" },
   { id: "recordatorio", label: "Recordatorio de pago", icon: CalendarClock, variables: "{nombre}, {tipo}, {monto}, {fecha}" },
   { id: "comprobante", label: "Comprobante de pago", icon: Receipt, variables: "{nombre}" },
   { id: "vencido", label: "Membresía vencida", icon: BellOff, variables: "{nombre}, {fecha}" },
-  { id: "__correo__", label: "Recordatorio por correo", icon: Mail, variables: null },
 ];
+
+// El "correo_" adelante es solo para que el id no choque con las
+// secciones de WhatsApp de arriba (que usan "bienvenida", "comprobante",
+// etc.) — la clave que se manda al backend es la misma sin el prefijo,
+// ver claveBackend() más abajo.
+const SECCIONES_CORREO = [
+  { id: "correo_bienvenida", label: "Bienvenida", icon: Send, variables: "{nombre}, {gym}, {membresia}, {vencimiento}" },
+  { id: "correo_comprobante", label: "Comprobante de pago", icon: Receipt, variables: "{nombre}, {gym}, {membresia}, {vencimiento}" },
+  { id: "correo_recordatorio", label: "Recordatorio de vencimiento", icon: CalendarClock, variables: "{nombre}, {gym}, {membresia}, {vencimiento}, {precio}, {estado}" },
+];
+
+const SECCIONES = [
+  ...SECCIONES_WHATSAPP,
+  ...SECCIONES_CORREO,
+  { id: "__correo__", label: "Probar envío de correos", icon: Mail, variables: null },
+];
+
+const claveBackend = (id) => id.replace("correo_", "");
 
 export default function Mensajes() {
   const { usuario } = useAuth();
   const [form, setForm] = useState(obtenerPlantillas());
   const [seccion, setSeccion] = useState("bienvenida");
   const [guardado, setGuardado] = useState(false);
+
+  const [plantillasCorreo, setPlantillasCorreo] = useState({});
+  const [guardandoCorreo, setGuardandoCorreo] = useState(false);
+  const [guardadoCorreo, setGuardadoCorreo] = useState(false);
 
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState(null);
@@ -32,10 +53,27 @@ export default function Mensajes() {
     socioService.listar().then((res) => setSocios(res.data.filter((s) => s.correo)));
   }, []);
 
+  useEffect(() => {
+    plantillaCorreoService.listar().then((res) => setPlantillasCorreo(res.data));
+  }, []);
+
   const guardar = () => {
     guardarPlantillas(form);
     setGuardado(true);
     setTimeout(() => setGuardado(false), 2000);
+  };
+
+  const guardarCorreo = async (idSeccion) => {
+    const clave = claveBackend(idSeccion);
+    const { asunto, cuerpo } = plantillasCorreo[clave];
+    setGuardandoCorreo(true);
+    try {
+      await plantillaCorreoService.actualizar(clave, { asunto, cuerpo });
+      setGuardadoCorreo(true);
+      setTimeout(() => setGuardadoCorreo(false), 2000);
+    } finally {
+      setGuardandoCorreo(false);
+    }
   };
 
   const probarEnvio = async () => {
@@ -66,11 +104,14 @@ export default function Mensajes() {
   };
 
   const actual = SECCIONES.find((s) => s.id === seccion);
+  const esSeccionCorreo = SECCIONES_CORREO.some((s) => s.id === seccion);
+  const plantillaCorreoActual = esSeccionCorreo ? plantillasCorreo[claveBackend(seccion)] : null;
 
   return (
     <div className="flex gap-6 max-w-4xl">
       <nav className="w-56 shrink-0 space-y-1">
-        {SECCIONES.map((s) => (
+        <p className="px-4 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-inksoft/60">WhatsApp</p>
+        {SECCIONES_WHATSAPP.map((s) => (
           <button
             key={s.id}
             onClick={() => setSeccion(s.id)}
@@ -80,6 +121,25 @@ export default function Mensajes() {
             <s.icon size={16} /> {s.label}
           </button>
         ))}
+
+        <p className="px-4 pt-4 pb-1 text-[10px] font-bold uppercase tracking-wide text-inksoft/60">Correo</p>
+        {SECCIONES_CORREO.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setSeccion(s.id)}
+            className={`w-full flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-left transition-all duration-150
+              ${seccion === s.id ? "bg-accent text-accentink" : "text-inksoft hover:bg-panel"}`}
+          >
+            <s.icon size={16} /> {s.label}
+          </button>
+        ))}
+        <button
+          onClick={() => setSeccion("__correo__")}
+          className={`w-full flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-left transition-all duration-150
+            ${seccion === "__correo__" ? "bg-accent text-accentink" : "text-inksoft hover:bg-panel"}`}
+        >
+          <Mail size={16} /> Probar envío de correos
+        </button>
       </nav>
 
       {actual.id === "__correo__" ? (
@@ -161,6 +221,57 @@ export default function Mensajes() {
               </div>
             )}
           </div>
+          )}
+        </div>
+      ) : esSeccionCorreo ? (
+        <div className="flex-1 rounded-xl p-5 bg-panel border border-line space-y-3">
+          <h3 className="font-display text-xl text-ink">{actual.label} (correo)</h3>
+          <p className="text-xs text-inksoft">Variables disponibles: {actual.variables}</p>
+          <p className="text-xs text-inksoft/70">
+            El logo, la tabla con los datos de la membresía y el pie de página se arman
+            aparte y no se pueden editar acá — solo el asunto y el mensaje.
+          </p>
+
+          {!plantillaCorreoActual ? (
+            <p className="text-sm text-inksoft">Cargando...</p>
+          ) : (
+            <>
+              <div>
+                <label className="text-xs font-semibold text-inksoft">Asunto</label>
+                <input
+                  value={plantillaCorreoActual.asunto}
+                  onChange={(e) => setPlantillasCorreo((p) => ({
+                    ...p,
+                    [claveBackend(seccion)]: { ...p[claveBackend(seccion)], asunto: e.target.value },
+                  }))}
+                  disabled={!puede(usuario, "mensajes", "editar_plantillas")}
+                  className="w-full mt-1 px-3 py-2 rounded-lg outline-none text-sm border border-line disabled:opacity-60"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-inksoft">Mensaje</label>
+                <textarea
+                  rows={6}
+                  value={plantillaCorreoActual.cuerpo}
+                  onChange={(e) => setPlantillasCorreo((p) => ({
+                    ...p,
+                    [claveBackend(seccion)]: { ...p[claveBackend(seccion)], cuerpo: e.target.value },
+                  }))}
+                  disabled={!puede(usuario, "mensajes", "editar_plantillas")}
+                  className="w-full mt-1 px-3 py-2 rounded-lg outline-none text-sm border border-line disabled:opacity-60"
+                />
+              </div>
+
+              {puede(usuario, "mensajes", "editar_plantillas") && (
+                <div className="flex justify-end">
+                  <button onClick={() => guardarCorreo(seccion)} disabled={guardandoCorreo}
+                    className="px-5 py-2.5 rounded-lg font-semibold bg-accent text-accentink transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50">
+                    {guardadoCorreo ? "Guardado ✓" : guardandoCorreo ? "Guardando..." : "Guardar"}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       ) : (

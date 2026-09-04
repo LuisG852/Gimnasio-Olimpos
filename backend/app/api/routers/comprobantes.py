@@ -55,6 +55,17 @@ def enviar_bienvenida_correo(socio_id: int, db: Session = Depends(get_db)):
     return {"mensaje": "Correo de bienvenida enviado."}
 
 
+@router.post("/socio/{socio_id}/comprobante-correo")
+def enviar_comprobante_correo(socio_id: int, db: Session = Depends(get_db)):
+    """Comprobante de pago por correo — a diferencia de bienvenida-correo
+    (que es solo para el registro inicial), este se usa en cada
+    renovación, con el último comprobante del socio adjunto."""
+    resultado = comprobante_service.enviar_comprobante_por_correo(db, socio_id)
+    if not resultado["ok"]:
+        raise HTTPException(status_code=400, detail=resultado["error"])
+    return {"mensaje": "Comprobante enviado por correo."}
+
+
 @router.get("/ingresos-mensuales", response_model=list[IngresoMensualOut], dependencies=[Depends(get_admin_actual)])
 def ingresos_mensuales(meses: int = 6, db: Session = Depends(get_db)):
     return comprobante_service.ingresos_por_mes(db, meses)

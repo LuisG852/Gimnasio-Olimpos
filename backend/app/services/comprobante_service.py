@@ -18,7 +18,7 @@ from reportlab.pdfgen import canvas
 
 from database.models import Comprobante, Socio, MovimientoCaja
 from app.core.config import settings
-from app.services import email_service
+from app.services import email_service, plantilla_correo_service
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "static", "olimpos-logo.png")
 
@@ -182,13 +182,23 @@ def generar_pdf(comprobante: Comprobante) -> bytes:
     return buffer.getvalue()
 
 
-def _plantilla_bienvenida(socio: Socio) -> str:
+def _plantilla_bienvenida(db: Session, socio: Socio) -> tuple[str, str]:
     logo_html = (
         f'<img src="{settings.GYM_LOGO_URL}" width="72" height="72" '
         f'style="display:block; margin: 0 auto 12px;" alt="{settings.GYM_NOMBRE}" />'
         if settings.GYM_LOGO_URL else ""
     )
-    return f"""
+
+    plantilla = plantilla_correo_service.obtener(db, "bienvenida")
+    variables = dict(
+        nombre=socio.nombre, gym=settings.GYM_NOMBRE,
+        membresia=socio.tipo_membresia,
+        vencimiento=socio.fecha_vencimiento.strftime("%d/%m/%Y"),
+    )
+    asunto = plantilla_correo_service.aplicar_variables(plantilla["asunto"], **variables)
+    mensaje = plantilla_correo_service.aplicar_variables(plantilla["cuerpo"], **variables)
+
+    html = f"""
     <div style="font-family: Arial, sans-serif; max-width: 420px; margin: 0 auto; background:#F4FBF7; padding: 24px 0;">
       <div style="background:#FFFFFF; border-radius: 16px; overflow:hidden; border: 1px solid #D7E6F0;">
         <div style="background:#003F7D; padding: 24px; text-align:center;">
@@ -196,11 +206,7 @@ def _plantilla_bienvenida(socio: Socio) -> str:
           <h1 style="color:#FFD600; font-size: 20px; margin: 0; letter-spacing: 1px;">{settings.GYM_NOMBRE.upper()}</h1>
         </div>
         <div style="padding: 24px;">
-          <p style="color:#003F7D; font-size: 16px; margin: 0 0 16px;">¡Bienvenido, <b>{socio.nombre}</b>! 🎉</p>
-          <p style="color:#4A6E93; font-size: 14px; line-height: 1.5; margin: 0 0 20px;">
-            Ya sos parte de {settings.GYM_NOMBRE}. Te dejamos adjunto el comprobante de tu inscripción
-            para que lo tengas a mano.
-          </p>
+          <p style="color:#003F7D; font-size: 16px; margin: 0 0 16px;">{mensaje}</p>
 
           <table style="width:100%; border-collapse: collapse; margin-bottom: 20px;">
             <tr>
@@ -223,6 +229,7 @@ def _plantilla_bienvenida(socio: Socio) -> str:
       </div>
     </div>
     """
+    return asunto, html
 
 
 def enviar_bienvenida_por_correo(db: Session, socio_id: int) -> dict:
@@ -245,8 +252,92 @@ def enviar_bienvenida_por_correo(db: Session, socio_id: int) -> dict:
             "content": base64.b64encode(pdf_bytes).decode("utf-8"),
         }]
 
-    asunto = f"¡Bienvenido a {settings.GYM_NOMBRE}!"
-    html = _plantilla_bienvenida(socio)
+    asunto, html = _plantilla_bienvenida(db, socio)
+
+    try:
+        ok = email_service.enviar_correo(socio.correo, f"{socio.nombre} {socio.apellido}", asunto, html, adjuntos=adjuntos)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+
+    return {"ok": ok, "error": None if ok else "Brevo rechazó el envío."}
+
+
+def _plantilla_comprobante(db: Session, socio: Socio) -> tuple[str, str]:
+    """A diferencia de _plantilla_bienvenida (solo para el registro
+    inicial), esta es genérica para cualquier pago posterior — hoy se
+    usa en las renovaciones."""
+    logo_html = (
+        f'<img src="{settings.GYM_LOGO_URL}" width="72" height="72" '
+        f'style="display:block; margin: 0 auto 12px;" alt="{settings.GYM_NOMBRE}" />'
+        if settings.GYM_LOGO_URL else ""
+    )
+
+    plantilla = plantilla_correo_service.obtener(db, "comprobante")
+    variables = dict(
+        nombre=socio.nombre, gym=settings.GYM_NOMBRE,
+        membresia=socio.tipo_membresia,
+        vencimiento=socio.fecha_vencimiento.strftime("%d/%m/%Y"),
+    )
+    asunto = plantilla_correo_service.aplicar_variables(plantilla["asunto"], **variables)
+    mensaje = plantilla_correo_service.aplicar_variables(plantilla["cuerpo"], **variables)
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 420px; margin: 0 auto; background:#F4FBF7; padding: 24px 0;">
+      <div style="background:#FFFFFF; border-radius: 16px; overflow:hidden; border: 1px solid #D7E6F0;">
+        <div style="background:#003F7D; padding: 24px; text-align:center;">
+          {logo_html}
+          <h1 style="color:#FFD600; font-size: 20px; margin: 0; letter-spacing: 1px;">{settings.GYM_NOMBRE.upper()}</h1>
+        </div>
+        <div style="padding: 24px;">
+          <p style="color:#003F7D; font-size: 16px; margin: 0 0 16px;">{mensaje}</p>
+
+          <table style="width:100%; border-collapse: collapse; margin-bottom: 20px;">
+            <tr>
+              <td style="padding: 10px 0; border-bottom: 1px solid #D7E6F0; color:#4A6E93; font-size: 13px;">Membresía</td>
+              <td style="padding: 10px 0; border-bottom: 1px solid #D7E6F0; color:#003F7D; font-size: 13px; text-align:right; font-weight:bold;">{socio.tipo_membresia}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; color:#4A6E93; font-size: 13px;">Próximo vencimiento</td>
+              <td style="padding: 10px 0; color:#003F7D; font-size: 13px; text-align:right; font-weight:bold;">{socio.fecha_vencimiento.strftime('%d/%m/%Y')}</td>
+            </tr>
+          </table>
+
+          <p style="color:#4A6E93; font-size: 14px; line-height: 1.5; margin: 0;">
+            ¡Gracias por tu pago, seguimos entrenando!
+          </p>
+        </div>
+        <div style="background:#F4FBF7; padding: 14px; text-align:center;">
+          <p style="color:#4A6E93; font-size: 11px; margin: 0;">Este es un correo automático, no hace falta que lo respondas.</p>
+        </div>
+      </div>
+    </div>
+    """
+    return asunto, html
+
+
+def enviar_comprobante_por_correo(db: Session, socio_id: int) -> dict:
+    """Manda por correo el ÚLTIMO comprobante del socio (con el PDF
+    adjunto), usando la plantilla genérica de arriba en vez de la de
+    bienvenida. Pensado para usarse en cada renovación — a diferencia
+    de enviar_bienvenida_por_correo, que solo pasa una vez, al
+    registrarse."""
+    socio = db.query(Socio).filter(Socio.id == socio_id).first()
+    if not socio:
+        return {"ok": False, "error": "Socio no encontrado."}
+    if not socio.correo:
+        return {"ok": False, "error": "Este socio no tiene correo registrado."}
+
+    comprobante = obtener_ultimo_por_socio(db, socio_id)
+    if not comprobante:
+        return {"ok": False, "error": "Este socio todavía no tiene comprobantes."}
+
+    pdf_bytes = generar_pdf(comprobante)
+    adjuntos = [{
+        "name": f"comprobante_{comprobante.id:06d}.pdf",
+        "content": base64.b64encode(pdf_bytes).decode("utf-8"),
+    }]
+
+    asunto, html = _plantilla_comprobante(db, socio)
 
     try:
         ok = email_service.enviar_correo(socio.correo, f"{socio.nombre} {socio.apellido}", asunto, html, adjuntos=adjuntos)

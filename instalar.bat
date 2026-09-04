@@ -12,7 +12,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0instalar_corregido.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0instalar.ps1"
 
 if errorlevel 1 (
     echo.

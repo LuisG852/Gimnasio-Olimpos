@@ -7,7 +7,7 @@ import ConfirmModal from "../components/ConfirmModal";
 import AvisoModal from "../components/AvisoModal";
 import { exportarContabilidadExcel, exportarContabilidadExcelAnual } from "../utils/contabilidadExcel";
 
-const CATEGORIAS = ["Renta", "Servicios", "Salarios", "Mantenimiento", "Publicidad", "Impuestos", "Inventario", "Otro"];
+const CATEGORIAS_BASE = ["Renta", "Servicios", "Salarios", "Mantenimiento", "Publicidad", "Impuestos", "Inventario"];
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -31,39 +31,68 @@ export default function Contabilidad() {
   const [gastos, setGastos] = useState([]);
   const [resumen, setResumen] = useState(null);
   const [historico, setHistorico] = useState([]);
+  // Categorías que ya se han usado alguna vez (de todos los meses, no
+  // solo el que se está viendo), para armar el select junto con las
+  // base — igual que categoriasExistentes en Inventario/ProductoModal.
+  const [categoriasHistoricas, setCategoriasHistoricas] = useState([]);
 
   const [modalAbierto, setModalAbierto] = useState(false);
   const [editando, setEditando] = useState(null);
   const [form, setForm] = useState(FORM_VACIO);
+  const [categoriaNueva, setCategoriaNueva] = useState(false);
   const [eliminando, setEliminando] = useState(null);
   const [duplicando, setDuplicando] = useState(false);
   const [descargandoPdf, setDescargandoPdf] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [modoReporte, setModoReporte] = useState("mensual"); // mensual | anual
 
+  const categorias = useMemo(
+    () => [...new Set([...CATEGORIAS_BASE, ...categoriasHistoricas])].sort(),
+    [categoriasHistoricas]
+  );
+
   const cargar = () => {
     contabilidadService.listar({ anio, mes }).then((res) => setGastos(res.data));
     contabilidadService.resumen(anio, mes).then((res) => setResumen(res.data));
   };
 
+  const cargarCategorias = () => {
+    contabilidadService.listar({}).then((res) =>
+      setCategoriasHistoricas([...new Set(res.data.map((g) => g.categoria).filter(Boolean))])
+    );
+  };
+
   useEffect(() => { cargar(); }, [anio, mes]);
   useEffect(() => { contabilidadService.historico(6).then((res) => setHistorico(res.data)); }, []);
+  useEffect(() => { cargarCategorias(); }, []);
 
   const abrirNuevo = () => {
     setEditando(null);
+    setCategoriaNueva(false);
     setForm({ ...FORM_VACIO, fecha: `${anio}-${String(mes).padStart(2, "0")}-01` });
     setModalAbierto(true);
   };
 
   const abrirEditar = (g) => {
     setEditando(g.id);
+    // Si la categoría guardada no está en la lista (poco común: pasaría
+    // si categoriasHistoricas todavía no se refrescó), el select la
+    // muestra en modo "nueva" con el texto ya puesto, igual que
+    // ProductoModal.
+    setCategoriaNueva(!categorias.includes(g.categoria));
     setForm({ descripcion: g.descripcion, categoria: g.categoria, tipo: g.tipo, monto: g.monto, fecha: g.fecha });
     setModalAbierto(true);
   };
 
   const guardar = async (e) => {
     e.preventDefault();
-    const payload = { ...form, monto: Number(form.monto) };
+    const payload = {
+      descripcion: form.descripcion,
+      categoria: form.categoria,
+      tipo: form.tipo,
+      monto: Number(form.monto),
+      fecha: form.fecha,
+    };
     if (editando) {
       await contabilidadService.actualizar(editando, payload);
     } else {
@@ -71,6 +100,7 @@ export default function Contabilidad() {
     }
     setModalAbierto(false);
     cargar();
+    cargarCategorias();
     contabilidadService.historico(6).then((res) => setHistorico(res.data));
   };
 
@@ -325,12 +355,35 @@ export default function Contabilidad() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
+              <div className={categoriaNueva ? "col-span-2" : ""}>
                 <label className="text-xs font-semibold text-inksoft">Categoría</label>
-                <select value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 rounded-lg outline-none border border-line bg-panel">
-                  {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                {categoriaNueva ? (
+                  <div className="flex gap-2 mt-1">
+                    <input autoFocus value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+                      placeholder="Escribí la nueva categoría"
+                      className="w-full px-3 py-2 rounded-lg outline-none border border-line" />
+                    <button type="button" onClick={() => { setCategoriaNueva(false); setForm({ ...form, categoria: categorias[0] || "" }); }}
+                      className="px-3 py-2 rounded-lg text-xs font-semibold border border-line text-inksoft">
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={categorias.includes(form.categoria) ? form.categoria : ""}
+                    onChange={(e) => {
+                      if (e.target.value === "__nueva__") {
+                        setCategoriaNueva(true);
+                        setForm({ ...form, categoria: "" });
+                      } else {
+                        setForm({ ...form, categoria: e.target.value });
+                      }
+                    }}
+                    className="w-full mt-1 px-3 py-2 rounded-lg outline-none border border-line bg-panel">
+                    <option value="" disabled>Elegí una categoría...</option>
+                    {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+                    <option value="__nueva__">+ Nueva categoría...</option>
+                  </select>
+                )}
               </div>
               <div>
                 <label className="text-xs font-semibold text-inksoft">Monto (Q)</label>

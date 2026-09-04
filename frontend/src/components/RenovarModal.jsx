@@ -43,7 +43,14 @@ export default function RenovarModal({ socio, precios, onClose, onRenovar }) {
     // Se abre (vacía) en este mismo instante del clic — la renovación va a
     // tardar unos segundos (guardar, generar comprobante, descargar PDF)
     // y para entonces el navegador ya no dejaría abrir la pestaña solo.
-    prepararVentanaWhatsapp();
+    // OJO: solo se abre si el socio NO tiene correo — es la misma condición
+    // que usa generarNuevoComprobante() para decidir si abre WhatsApp o no
+    // (si tiene correo, el comprobante se manda por email y WhatsApp nunca
+    // se abre). Si no se revisa esto acá, queda una pestaña en blanco sin
+    // usar cada vez que el socio sí tiene correo registrado.
+    if (!socio.correo) {
+      prepararVentanaWhatsapp();
+    }
     const tipoFinal = tipo === "Personalizado" ? (nombrePersonalizado.trim() || "Personalizado") : tipo;
     onRenovar(socio.id, {
       tipo_membresia: tipoFinal,

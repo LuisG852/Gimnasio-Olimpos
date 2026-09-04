@@ -9,19 +9,29 @@ from sqlalchemy.orm import Session
 
 from database.models import Socio
 from app.core.config import settings
-from app.services import email_service
+from app.services import email_service, plantilla_correo_service
 
 
-def _plantilla(socio: Socio) -> tuple[str, str]:
+def _plantilla(db: Session, socio: Socio) -> tuple[str, str]:
     dias_restantes = (socio.fecha_vencimiento - date.today()).days
     if dias_restantes < 0:
-        frase = f"venció el {socio.fecha_vencimiento.strftime('%d/%m/%Y')}"
+        estado = f"venció el {socio.fecha_vencimiento.strftime('%d/%m/%Y')}"
     elif dias_restantes == 0:
-        frase = "vence hoy"
+        estado = "vence hoy"
     else:
-        frase = f"vence el {socio.fecha_vencimiento.strftime('%d/%m/%Y')}"
+        estado = f"vence el {socio.fecha_vencimiento.strftime('%d/%m/%Y')}"
 
-    asunto = f"Tu membresía en {settings.GYM_NOMBRE} {frase}"
+    plantilla = plantilla_correo_service.obtener(db, "recordatorio")
+    variables = dict(
+        nombre=socio.nombre, gym=settings.GYM_NOMBRE,
+        membresia=socio.tipo_membresia,
+        vencimiento=socio.fecha_vencimiento.strftime("%d/%m/%Y"),
+        precio=f"{float(socio.precio):.2f}",
+        estado=estado,
+    )
+    asunto = plantilla_correo_service.aplicar_variables(plantilla["asunto"], **variables)
+    mensaje = plantilla_correo_service.aplicar_variables(plantilla["cuerpo"], **variables)
+
     # Gmail y la mayoría de correos bloquean imágenes en base64 incrustadas
     # en el HTML, así que el logo solo se muestra si hay una URL pública
     # real configurada (GYM_LOGO_URL en el .env).
@@ -39,10 +49,7 @@ def _plantilla(socio: Socio) -> tuple[str, str]:
           <h1 style="color:#FFD600; font-size: 20px; margin: 0; letter-spacing: 1px;">{settings.GYM_NOMBRE.upper()}</h1>
         </div>
         <div style="padding: 24px;">
-          <p style="color:#003F7D; font-size: 15px; margin: 0 0 16px;">Hola <b>{socio.nombre}</b>,</p>
-          <p style="color:#4A6E93; font-size: 14px; line-height: 1.5; margin: 0 0 20px;">
-            Te escribimos para avisarte que tu membresía {frase}.
-          </p>
+          <p style="color:#003F7D; font-size: 15px; margin: 0 0 16px;">{mensaje}</p>
 
           <table style="width:100%; border-collapse: collapse; margin-bottom: 20px;">
             <tr>
@@ -58,10 +65,6 @@ def _plantilla(socio: Socio) -> tuple[str, str]:
               <td style="padding: 10px 0; color:#D4AF37; font-size: 15px; text-align:right; font-weight:bold;">Q{float(socio.precio):.2f}</td>
             </tr>
           </table>
-
-          <p style="color:#4A6E93; font-size: 14px; line-height: 1.5; margin: 0;">
-            Pasa cuando puedas a renovarla para seguir entrenando sin interrupciones. ¡Te esperamos!
-          </p>
         </div>
         <div style="background:#F4FBF7; padding: 14px; text-align:center;">
           <p style="color:#4A6E93; font-size: 11px; margin: 0;">Este es un correo automático, no hace falta que lo respondas.</p>
@@ -83,7 +86,7 @@ def enviar_a_socio(db: Session, socio_id: int) -> dict:
         return {"ok": False, "error": "Ese socio no tiene correo registrado."}
 
     try:
-        asunto, html = _plantilla(socio)
+        asunto, html = _plantilla(db, socio)
         ok = email_service.enviar_correo(socio.correo, f"{socio.nombre} {socio.apellido}", asunto, html)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
@@ -110,7 +113,7 @@ def revisar_y_enviar(db: Session) -> dict:
         if socio.recordatorio_correo_enviado == socio.fecha_vencimiento:
             continue
         try:
-            asunto, html = _plantilla(socio)
+            asunto, html = _plantilla(db, socio)
             ok = email_service.enviar_correo(socio.correo, f"{socio.nombre} {socio.apellido}", asunto, html)
             if ok:
                 socio.recordatorio_correo_enviado = socio.fecha_vencimiento

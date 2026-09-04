@@ -51,6 +51,7 @@ export const comprobanteService = {
   descargarPdf: (id) => api.get(`/comprobantes/${id}/pdf`, { responseType: "blob" }),
   ingresosMensuales: (meses = 6) => api.get(`/comprobantes/ingresos-mensuales?meses=${meses}`),
   enviarBienvenidaCorreo: (socioId) => api.post(`/comprobantes/socio/${socioId}/bienvenida-correo`),
+  enviarComprobanteCorreo: (socioId) => api.post(`/comprobantes/socio/${socioId}/comprobante-correo`),
 };
 
 export const usuarioService = {
@@ -124,6 +125,11 @@ export const contabilidadService = {
   reportePdf: (anio, mes) => api.get("/contabilidad/reporte-pdf", { params: { anio, mes }, responseType: "blob" }),
   reportePdfAnual: (anio) => api.get("/contabilidad/reporte-pdf-anual", { params: { anio }, responseType: "blob" }),
   resumenAnual: (anio) => api.get("/contabilidad/resumen-anual", { params: { anio } }),
+};
+
+export const plantillaCorreoService = {
+  listar: () => api.get("/plantillas-correo/"),
+  actualizar: (clave, datos) => api.put(`/plantillas-correo/${clave}`, datos),
 };
 
 export const actividadService = {
