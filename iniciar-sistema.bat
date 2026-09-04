@@ -7,8 +7,8 @@ REM  frontend, y abre el navegador solo.
 REM ==========================================
 
 set RAIZ=%~dp0
-REM %~dp0 es la carpeta donde está este mismo archivo .bat — así el
-REM sistema funciona sin importar en qué carpeta/computadora se instale,
+REM %~dp0 es la carpeta donde esta este mismo archivo .bat -- asi el
+REM sistema funciona sin importar en que carpeta/computadora se instale,
 REM en vez de depender de una ruta fija escrita a mano.
 if "%RAIZ:~-1%"=="\" set RAIZ=%RAIZ:~0,-1%
 
